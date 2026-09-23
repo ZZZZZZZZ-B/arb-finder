@@ -1,5 +1,7 @@
 # Promotion Hedge Arbitrage Tool
 
+![Promotion Hedge Arbitrage Tool banner](config/background.jpg)
+
 A Python tool for analyzing sports betting promotions with The Odds API. It supports Bonus Bet SNR and Profit Boost calculations, live event discovery, bookmaker selection, and two-sided hedge analysis.
 
 ## Features

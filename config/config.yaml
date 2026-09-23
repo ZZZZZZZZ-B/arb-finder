@@ -25,6 +25,7 @@ event_window_hours: 336
 sports:
   nba: { sport_key: basketball_nba, title: NBA }
   wnba: { sport_key: basketball_wnba, title: WNBA }
+  nhl: { sport_key: icehockey_nhl, title: NHL }
   mlb: { sport_key: baseball_mlb, title: MLB }
   nfl: { sport_key: americanfootball_nfl, title: NFL }
   ncaaf: { sport_key: americanfootball_ncaaf, title: NCAAF }
