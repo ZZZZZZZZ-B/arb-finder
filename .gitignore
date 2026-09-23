@@ -1,0 +1,14 @@
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# Logs
+*.log
+*.log.*
+logs/
+log/
+
+# Generated output files
+/output/*

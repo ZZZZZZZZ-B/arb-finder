@@ -1,0 +1,73 @@
+promo:
+  type: bonus_bet_snr
+  primary_bookmaker: draftkings
+  hedge_bookmakers: [fanduel]
+  bonus_bet_snr:
+    amount: 100
+    min_decimal_odds: 3.40
+
+profit_boost:
+  default_stake: null
+  default_boost_percent: null
+  allow_negative_profit: true
+
+selection:
+  event_discovery: true
+  keyword_match_case_insensitive: true
+  require_confirmation_on_multiple_matches: true
+
+ui:
+  banner_image: ./config/background.jpg
+  banner_height: 120
+
+event_window_hours: 336
+
+sports:
+  nba: { sport_key: basketball_nba, title: NBA }
+  wnba: { sport_key: basketball_wnba, title: WNBA }
+  mlb: { sport_key: baseball_mlb, title: MLB }
+  nfl: { sport_key: americanfootball_nfl, title: NFL }
+  ncaaf: { sport_key: americanfootball_ncaaf, title: NCAAF }
+  ufc: { sport_key: mma_mixed_martial_arts, title: UFC }
+  tennis_atp: { dynamic_prefix: "tennis_atp_", title: Tennis ATP }
+  soccer:
+    title: Soccer
+    leagues:
+      - soccer_epl
+      - soccer_spain_la_liga
+      - soccer_usa_mls
+
+top_n: 10
+
+platforms:
+  draftkings:
+    enabled: true
+    source: odds_api
+    title: DraftKings
+  fanduel:
+    enabled: true
+    source: odds_api
+    title: FanDuel
+  proline:
+    enabled: false
+    source: external_adapter
+    title: Proline+
+  bet365:
+    enabled: false
+    source: external_adapter
+    title: Bet365
+  hardrock:
+    enabled: false
+    source: external_adapter
+    title: Hard Rock Bet
+
+odds_api:
+  api_key_envs: [ODDS_API_KEY]
+  key_rotation_strategy: round_robin
+  odds_format: decimal
+  date_format: iso
+  bookmakers: [draftkings, fanduel]
+
+output:
+  formats: [csv, json]
+  output_dir: ./output
