@@ -7,7 +7,7 @@ from typing import Iterable
 from promo_hedge_tool.odds_client.models import OddsQuote
 
 NO_DRAW_MARKET_KEYS = {"h2h", "spreads", "totals"}
-SOCCER_BINARY_MARKET_KEYS = {"draw_no_bet", "spreads", "totals"}
+SOCCER_BINARY_MARKET_KEYS = {"h2h", "spreads", "totals"}
 
 
 @dataclass(frozen=True)
@@ -26,7 +26,8 @@ def filter_binary_quotes(quotes: Iterable[OddsQuote], soccer_sport_keys: set[str
     filtered: list[OddsQuote] = []
     for quote in quotes:
         is_soccer = quote.sport_key in soccer_sport_keys
-        if is_binary_market(quote.market_key, is_soccer):
+        is_draw_outcome = quote.outcome_name.strip().casefold() == "draw"
+        if is_binary_market(quote.market_key, is_soccer) and not (is_soccer and quote.market_key == "h2h" and is_draw_outcome):
             filtered.append(quote)
     return filtered
 

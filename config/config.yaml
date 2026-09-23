@@ -63,7 +63,7 @@ platforms:
     title: Hard Rock Bet
 
 odds_api:
-  api_key_envs: [ODDS_API_KEY]
+  api_key_envs: [ODDS_API_KEYS]
   key_rotation_strategy: round_robin
   odds_format: decimal
   date_format: iso

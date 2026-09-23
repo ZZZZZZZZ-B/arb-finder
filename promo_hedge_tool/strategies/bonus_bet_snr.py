@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Optional
 
 from promo_hedge_tool.odds_client.models import OddsQuote
-from promo_hedge_tool.strategies.base import HedgeResult, PromoStrategy
+from promo_hedge_tool.strategies.base import HedgeResult, PromoStrategy, describe_quote
 
 
 class BonusBetSNRStrategy(PromoStrategy):
@@ -38,4 +38,12 @@ class BonusBetSNRStrategy(PromoStrategy):
             hedge_stake=round(hedge_stake, 2),
             locked_profit=round(profit, 2),
             conversion_rate_pct=round(conversion_rate, 2),
+            primary_point=primary_quote.point,
+            hedge_point=hedge_quote.point,
+            primary_bet_description=describe_quote(primary_quote),
+            hedge_bet_description=describe_quote(hedge_quote),
+            primary_stake=0.0,
+            primary_return=round(self.amount * primary_quote.decimal_odds, 2),
+            hedge_return=round(hedge_stake * hedge_quote.decimal_odds, 2),
+            total_cash_staked=round(hedge_stake, 2),
         )

@@ -18,10 +18,10 @@ def make_quote(bookmaker_key, market_key, outcome_name, odds, point=None, sport_
     )
 
 
-def test_binary_market_filters_soccer_dnb_only():
+def test_binary_market_filters_soccer_h2h_without_draw():
     assert is_binary_market("h2h", False) is True
-    assert is_binary_market("h2h", True) is False
-    assert is_binary_market("draw_no_bet", True) is True
+    assert is_binary_market("h2h", True) is True
+    assert is_binary_market("draw_no_bet", True) is False
 
 
 def test_build_matchups_groups_same_market_and_point():
@@ -39,12 +39,12 @@ def test_build_matchups_groups_same_market_and_point():
 def test_filter_binary_quotes_removes_unsupported_markets():
     quotes = [
         make_quote("draftkings", "h2h", "Team A", 2.0, sport_key="soccer_epl"),
-        make_quote("draftkings", "draw_no_bet", "Team A", 2.1, sport_key="soccer_epl"),
-        make_quote("draftkings", "draw_no_bet", "Team B", 1.9, sport_key="soccer_epl"),
+        make_quote("draftkings", "h2h", "Draw", 3.2, sport_key="soccer_epl"),
+        make_quote("draftkings", "h2h", "Team B", 1.9, sport_key="soccer_epl"),
     ]
     filtered = filter_binary_quotes(quotes, {"soccer_epl"})
     assert len(filtered) == 2
-    assert all(q.market_key == "draw_no_bet" for q in filtered)
+    assert all(q.outcome_name != "Draw" for q in filtered)
 
 
 def test_build_matchups_orders_outcomes_by_name_not_api_order():

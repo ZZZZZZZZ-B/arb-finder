@@ -84,8 +84,10 @@ def resolve_api_keys(env_names: list[str]) -> list[str]:
     keys: list[str] = []
     for name in env_names:
         value = os.getenv(name)
+        if not value and name == "ODDS_API_KEYS":
+            value = os.getenv("ODDS_API_KEY")
         if value:
-            keys.append(value)
+            keys.extend(part.strip() for part in value.replace(";", ",").replace("\n", ",").split(",") if part.strip())
     if not keys:
         raise RuntimeError(f"No API key found in environment variables: {env_names}")
     return keys

@@ -63,7 +63,7 @@ def execute(config: Config, context: RunContext, output_dir: str | Path | None =
     all_quotes: list[OddsQuote] = []
 
     for logical_name, keys in sport_keys.items():
-        markets = ["draw_no_bet", "spreads", "totals"] if logical_name == "soccer" else ["h2h", "spreads", "totals"]
+        markets = ["h2h", "spreads", "totals"]
         for sport_key in keys:
             try:
                 all_quotes.extend(

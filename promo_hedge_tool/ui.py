@@ -204,6 +204,7 @@ class HedgeApp(tk.Tk):
         self.result_list.column("hedge", anchor="w", width=110)
         self.result_list.column("profit", anchor="e", width=150, minwidth=140, stretch=False)
         self.result_list.grid(row=15, column=1, sticky="nsew", pady=5)
+        self.result_list.bind("<Double-1>", self._show_selected_result)
 
     def _league_names(self) -> list[str]:
         names: list[str] = []
@@ -328,12 +329,14 @@ class HedgeApp(tk.Tk):
             self.after(0, lambda: self.status.set("Analysis failed. Check the platform data sources and API quota."))
 
     def _show_results(self, results) -> None:
+        self.displayed_results = list(results)
         for item in self.result_list.get_children():
             self.result_list.delete(item)
-        for result in results:
+        for index, result in enumerate(self.displayed_results):
             self.result_list.insert(
                 "",
                 "end",
+                iid=str(index),
                 values=(
                     result.event_name,
                     result.market_key,
@@ -342,6 +345,44 @@ class HedgeApp(tk.Tk):
                     f"{result.locked_profit:.2f}",
                 ),
             )
+
+    def _show_selected_result(self, _event=None) -> None:
+        selection = self.result_list.selection()
+        if not selection:
+            return
+        result = self.displayed_results[int(selection[0])]
+        details = tk.Toplevel(self)
+        details.title(f"Bet details - {result.event_name}")
+        details.geometry("620x430")
+        details.transient(self)
+        details.grab_set()
+
+        body = ttk.Frame(details, padding=16)
+        body.pack(fill="both", expand=True)
+        ttk.Label(body, text=result.event_name, font=("TkDefaultFont", 12, "bold")).pack(anchor="w")
+        ttk.Label(body, text=f"{result.sport_key} | {result.market_key} | {result.commence_time_local}").pack(anchor="w", pady=(4, 12))
+
+        rows = [
+            ("Base platform", result.primary_bookmaker),
+            ("Base bet", result.primary_bet_description or result.primary_selection),
+            ("Base odds", f"{result.primary_odds_decimal:.3f}"),
+            ("Base stake", f"{result.primary_stake:.2f}"),
+            ("Base potential return", f"{result.primary_return:.2f}"),
+            ("Hedge platform", result.hedge_platform),
+            ("Hedge bet", result.hedge_bet_description or result.hedge_selection),
+            ("Hedge odds", f"{result.hedge_odds_decimal:.3f}"),
+            ("Hedge stake", f"{result.hedge_stake:.2f}"),
+            ("Hedge potential return", f"{result.hedge_return:.2f}"),
+            ("Total cash staked", f"{result.total_cash_staked:.2f}"),
+            ("Locked profit", f"{result.locked_profit:.2f}"),
+            ("Conversion rate", f"{result.conversion_rate_pct:.2f}%"),
+        ]
+        table = ttk.Frame(body)
+        table.pack(fill="x")
+        for row, (label, value) in enumerate(rows):
+            ttk.Label(table, text=label, width=24).grid(row=row, column=0, sticky="w", padx=(0, 16), pady=2)
+            ttk.Label(table, text=value).grid(row=row, column=1, sticky="w", pady=2)
+        ttk.Button(body, text="Close", command=details.destroy).pack(anchor="e", pady=(16, 0))
 
 
 def launch(config_path: str = "config/config.yaml") -> None:
