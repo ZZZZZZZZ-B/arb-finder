@@ -1,4 +1,4 @@
-from promo_hedge_tool.market_filter import build_matchups, filter_binary_quotes, is_binary_market
+from promo_hedge_tool.market_filter import build_matchups, filter_binary_quotes, is_binary_market, quotes_are_compatible
 from promo_hedge_tool.odds_client.models import OddsQuote
 
 
@@ -27,13 +27,39 @@ def test_binary_market_filters_soccer_h2h_without_draw():
 def test_build_matchups_groups_same_market_and_point():
     quotes = [
         make_quote("draftkings", "spreads", "Team A", 2.0, -3.5),
-        make_quote("draftkings", "spreads", "Team B", 1.9, -3.5),
+        make_quote("draftkings", "spreads", "Team B", 1.9, 3.5),
         make_quote("fanduel", "spreads", "Team A", 2.1, -3.5),
-        make_quote("fanduel", "spreads", "Team B", 1.8, -3.5),
+        make_quote("fanduel", "spreads", "Team B", 1.8, 3.5),
     ]
     matchups = build_matchups(quotes)
     assert len(matchups) == 1
     assert set(matchups[0].quotes_by_bookmaker) == {"draftkings", "fanduel"}
+
+
+def test_spreads_reject_same_direction_points():
+    first = make_quote("draftkings", "spreads", "Team A", 2.0, -1.5)
+    second = make_quote("draftkings", "spreads", "Team B", 1.9, -1.5)
+
+    assert quotes_are_compatible(first, second) is False
+    assert build_matchups([first, second]) == []
+
+
+def test_period_spreads_require_opposite_points():
+    first = make_quote("draftkings", "spreads_1st_1_innings", "Team A", 2.0, -1.5)
+    second = make_quote("draftkings", "spreads_1st_1_innings", "Team B", 1.9, 1.5)
+
+    assert quotes_are_compatible(first, second) is True
+
+
+def test_totals_require_one_over_and_one_under_at_same_point():
+    over = make_quote("draftkings", "totals", "Over", 2.0, 5.5)
+    under = make_quote("draftkings", "totals", "Under", 1.9, 5.5)
+    other_over = make_quote("draftkings", "totals", "Over", 1.8, 5.5)
+    different_point = make_quote("draftkings", "totals", "Under", 1.9, 6.5)
+
+    assert quotes_are_compatible(over, under) is True
+    assert quotes_are_compatible(over, other_over) is False
+    assert quotes_are_compatible(over, different_point) is False
 
 
 def test_filter_binary_quotes_removes_unsupported_markets():

@@ -36,11 +36,22 @@ class HedgeResult:
 
 def describe_quote(quote: OddsQuote) -> str:
     selection = quote.outcome_name
-    if quote.market_key == "totals" and quote.point is not None:
+    if (quote.market_key == "totals" or quote.market_key.startswith("totals_")) and quote.point is not None:
         return f"{selection} {quote.point:g}"
-    if quote.market_key == "spreads" and quote.point is not None:
+    if (quote.market_key == "spreads" or quote.market_key.startswith("spreads_")) and quote.point is not None:
         return f"{selection} {quote.point:+g}"
     return selection
+
+
+def describe_market(market_key: str) -> str:
+    labels = {
+        "h2h": "Moneyline",
+        "spreads": "Spread",
+        "totals": "Total",
+        "spreads_1st_1_innings": "1st inning Run Line",
+        "totals_1st_1_innings": "1st inning Total Runs",
+    }
+    return labels.get(market_key, market_key.replace("_", " ").title())
 
 
 class PromoStrategy(ABC):

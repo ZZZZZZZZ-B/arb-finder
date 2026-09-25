@@ -15,10 +15,13 @@ class RunContext:
     commence_time_from: datetime | None = None
     commence_time_to: datetime | None = None
     selected_event_ids: tuple[str, ...] = field(default_factory=tuple)
+    selected_event_sports: tuple[tuple[str, str], ...] = field(default_factory=tuple)
     team_keyword: str = ""
     odds_operator: str | None = None
     odds_requirement_american: float | None = None
     bonus_amount: float | None = None
+    period: str = "full-game"
+    selected_markets: tuple[str, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         if self.mode not in {"bonus-bet", "profit-boost"}:
@@ -29,6 +32,13 @@ class RunContext:
             raise ValueError("base bookmaker cannot also be a hedge bookmaker")
         if not self.hedge_bookmakers:
             raise ValueError("Select at least one hedge bookmaker")
+        if not self.period:
+            raise ValueError("period is required")
+        if self.period != "full-game":
+            if not self.selected_event_ids:
+                raise ValueError("Select at least one event for a period market")
+            if not self.selected_markets:
+                raise ValueError("Select at least one market for a period")
         if self.mode == "bonus-bet":
             if self.bonus_amount is None or self.bonus_amount <= 0:
                 raise ValueError("Bonus Bet amount must be greater than zero")
@@ -66,11 +76,14 @@ def build_run_context(
     commence_time_from: datetime | None = None,
     commence_time_to: datetime | None = None,
     selected_event_ids: tuple[str, ...] = (),
+    selected_event_sports: tuple[tuple[str, str], ...] = (),
     team_keyword: str = "",
     hedge_bookmakers: tuple[str, ...] | None = None,
     odds_operator: str | None = None,
     odds_requirement_american: float | None = None,
     bonus_amount: float | None = None,
+    period: str = "full-game",
+    selected_markets: tuple[str, ...] = (),
 ) -> RunContext:
     available = configured_bookmakers(config)
     if base_bookmaker not in available:
@@ -97,7 +110,10 @@ def build_run_context(
         commence_time_from=commence_time_from,
         commence_time_to=commence_time_to,
         selected_event_ids=selected_event_ids,
+        selected_event_sports=selected_event_sports,
         team_keyword=team_keyword,
         odds_operator=odds_operator,
         odds_requirement_american=odds_requirement_american,
+        period=period,
+        selected_markets=selected_markets,
     )

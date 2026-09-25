@@ -26,6 +26,18 @@ sports:
 
 top_n: 10
 
+periods:
+  first_inning:
+    title: 1st Inning
+    sport_keys: [baseball_mlb]
+    markets:
+      run_line:
+        title: Run Line
+        market_key: spreads_1st_1_innings
+      total_runs:
+        title: Total Runs
+        market_key: totals_1st_1_innings
+
 platforms:
   draftkings:
     enabled: true

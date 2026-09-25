@@ -22,6 +22,8 @@ from promo_hedge_tool.logging_config import configure_logging
 from promo_hedge_tool.odds_client.client import OddsAPIClient
 from promo_hedge_tool.odds_client.key_pool import KeyPool
 from promo_hedge_tool.run_context import build_run_context, configured_bookmakers
+from promo_hedge_tool.odds_rules import decimal_to_american
+from promo_hedge_tool.strategies.base import describe_market
 
 try:
     from PIL import Image, ImageTk
@@ -116,10 +118,11 @@ class HedgeApp(tk.Tk):
         body = ttk.Frame(self, padding=18)
         body.pack(fill="both", expand=True)
         body.columnconfigure(1, weight=1)
-        body.rowconfigure(11, weight=1)
-        body.rowconfigure(15, weight=1)
+        body.rowconfigure(14, weight=1)
+        body.rowconfigure(17, weight=1)
 
         self.mode = tk.StringVar(value="profit-boost")
+        self.period = tk.StringVar(value="full-game")
         self.base = tk.StringVar(value=configured_bookmakers(self.config_data)[0])
         boost_config = self.config_data.profit_boost
         default_stake = boost_config.get("default_stake") or "100"
@@ -131,6 +134,7 @@ class HedgeApp(tk.Tk):
         self.league = tk.StringVar(value="All")
         self.keyword = tk.StringVar(value="")
         self.fetch_latest = tk.BooleanVar(value=True)
+        self.market_vars: dict[str, tk.BooleanVar] = {}
         self.status = tk.StringVar(value="Set the query range, then click 'Find Events'.")
 
         local_now = datetime.now().astimezone()
@@ -145,6 +149,7 @@ class HedgeApp(tk.Tk):
 
         fields = [
             ("Mode *", ttk.Combobox(body, textvariable=self.mode, values=["bonus-bet", "profit-boost"], state="readonly")),
+            ("Period *", ttk.Combobox(body, textvariable=self.period, values=self._period_values(), state="readonly")),
             ("Base bookmaker *", ttk.Combobox(body, textvariable=self.base, values=configured_bookmakers(self.config_data), state="readonly")),
             ("Cash stake / Bonus amount *", ttk.Entry(body, textvariable=self.stake)),
             ("Boost percentage *", ttk.Entry(body, textvariable=self.boost)),
@@ -159,42 +164,51 @@ class HedgeApp(tk.Tk):
             ttk.Label(body, text=title).grid(row=row, column=0, sticky="w", padx=(0, 12), pady=5)
             widget.grid(row=row, column=1, sticky="ew", pady=5)
 
-        base_widget = fields[1][1]
+        self.league_widget = fields[7][1]
+
+        base_widget = fields[2][1]
         base_widget.bind("<<ComboboxSelected>>", lambda _event: (self._refresh_hedge_selection(), self._refresh_run_button()))
         self.mode.trace_add("write", lambda *_args: self._on_mode_changed())
+        self.period.trace_add("write", lambda *_args: self._on_period_changed())
         for variable in (self.base, self.stake, self.boost, self.odds_operator, self.odds_requirement):
             variable.trace_add("write", lambda *_args: self._refresh_run_button())
 
-        ttk.Label(body, text="Hedge bookmakers").grid(row=10, column=0, sticky="nw", padx=(0, 12), pady=5)
+        ttk.Label(body, text="Markets").grid(row=12, column=0, sticky="nw", padx=(0, 12), pady=5)
+        self.market_frame = ttk.Frame(body)
+        self.market_frame.grid(row=12, column=1, sticky="ew", pady=5)
+        self._refresh_market_selection()
+
+        ttk.Label(body, text="Hedge bookmakers").grid(row=13, column=0, sticky="nw", padx=(0, 12), pady=5)
         hedge_frame = ttk.Frame(body)
-        hedge_frame.grid(row=10, column=1, sticky="ew", pady=5)
+        hedge_frame.grid(row=13, column=1, sticky="ew", pady=5)
         self.hedge_frame = hedge_frame
         self._refresh_hedge_selection()
 
-        ttk.Label(body, text="Event selection").grid(row=11, column=0, sticky="nw", padx=(0, 12), pady=5)
-        self.event_list = ttk.Treeview(body, columns=("event", "local_time"), show="headings", selectmode="browse", height=8)
+        ttk.Label(body, text="Event selection").grid(row=14, column=0, sticky="nw", padx=(0, 12), pady=5)
+        self.event_list = ttk.Treeview(body, columns=("event", "local_time"), show="headings", selectmode="extended", height=8)
         self.event_list.heading("event", text="Event")
         self.event_list.heading("local_time", text=f"Local start time ({local_timezone_label()})")
         self.event_list.column("event", anchor="w", width=360)
         self.event_list.column("local_time", anchor="w", width=220)
-        self.event_list.grid(row=11, column=1, sticky="nsew", pady=5)
+        self.event_list.grid(row=14, column=1, sticky="nsew", pady=5)
         scrollbar = ttk.Scrollbar(body, orient="vertical", command=self.event_list.yview)
-        scrollbar.grid(row=11, column=2, sticky="ns", pady=5)
+        scrollbar.grid(row=14, column=2, sticky="ns", pady=5)
         self.event_list.configure(yscrollcommand=scrollbar.set)
+        self.event_list.bind("<<TreeviewSelect>>", lambda _event: self._refresh_run_button())
 
-        ttk.Label(body, textvariable=self.status).grid(row=12, column=0, columnspan=3, sticky="w", pady=(8, 4))
+        ttk.Label(body, textvariable=self.status).grid(row=15, column=0, columnspan=3, sticky="w", pady=(8, 4))
         actions = ttk.Frame(body)
-        actions.grid(row=13, column=0, columnspan=3, sticky="e")
+        actions.grid(row=16, column=0, columnspan=3, sticky="e")
         ttk.Checkbutton(
             body,
             text="Fetch latest Odds API data",
             variable=self.fetch_latest,
-        ).grid(row=13, column=0, sticky="w", pady=5)
+        ).grid(row=16, column=0, sticky="w", pady=5)
         ttk.Button(actions, text="Find Events", command=self.query_events).pack(side="left", padx=4)
         self.run_button = ttk.Button(actions, text="Run Analysis", command=self.run_analysis)
         self.run_button.pack(side="left", padx=4)
 
-        ttk.Label(body, text="Top 3 results by locked profit").grid(row=14, column=0, sticky="nw", padx=(0, 12), pady=5)
+        ttk.Label(body, text="Top 3 results by locked profit").grid(row=17, column=0, sticky="nw", padx=(0, 12), pady=5)
         self.result_list = ttk.Treeview(
             body,
             columns=("event", "market", "base", "hedge", "profit"),
@@ -215,7 +229,7 @@ class HedgeApp(tk.Tk):
         self.result_list.column("base", anchor="w", width=110)
         self.result_list.column("hedge", anchor="w", width=110)
         self.result_list.column("profit", anchor="e", width=150, minwidth=140, stretch=False)
-        self.result_list.grid(row=15, column=1, sticky="nsew", pady=5)
+        self.result_list.grid(row=17, column=1, sticky="nsew", pady=5)
         self.result_list.bind("<Double-1>", self._show_selected_result)
         self._on_mode_changed()
 
@@ -227,6 +241,38 @@ class HedgeApp(tk.Tk):
             else:
                 names.append(name)
         return names
+
+    def _period_values(self) -> list[str]:
+        return ["full-game", *self.config_data.periods]
+
+    def _refresh_market_selection(self) -> None:
+        for child in self.market_frame.winfo_children():
+            child.destroy()
+        self.market_vars = {}
+        if self.period.get() == "full-game":
+            ttk.Label(self.market_frame, text="Full game markets are used.").pack(anchor="w")
+            return
+        definition = self.config_data.periods.get(self.period.get(), {})
+        for name, market in definition.get("markets", {}).items():
+            selected = tk.BooleanVar(value=True)
+            self.market_vars[name] = selected
+            ttk.Checkbutton(
+                self.market_frame,
+                text=market.get("title", name),
+                variable=selected,
+                command=self._refresh_run_button,
+            ).pack(anchor="w")
+
+    def _on_period_changed(self) -> None:
+        if self.period.get() == "full-game":
+            self.league_widget.configure(values=["All"] + self._league_names(), state="readonly")
+            self.league.set("All")
+        else:
+            period_sports = self.config_data.periods.get(self.period.get(), {}).get("sport_keys", [])
+            self.league_widget.configure(values=list(period_sports), state="disabled")
+            self.league.set(period_sports[0] if len(period_sports) == 1 else "All")
+        self._refresh_market_selection()
+        self._refresh_run_button()
 
     def _refresh_hedge_selection(self) -> None:
         available = [name for name in configured_bookmakers(self.config_data) if name != self.base.get()]
@@ -255,6 +301,13 @@ class HedgeApp(tk.Tk):
             return "Mode and base bookmaker are required."
         if not any(selected.get() for selected in self.hedge_vars.values()):
             return "Select at least one hedge bookmaker."
+        selected_items = self.event_list.selection()
+        specific_items = tuple(item_id for item_id in selected_items if item_id != "all")
+        if self.period.get() != "full-game":
+            if not specific_items:
+                return "Select at least one specific event for a period market."
+            if not any(selected.get() for selected in self.market_vars.values()):
+                return "Select at least one period market."
         try:
             amount = float(self.stake.get())
             if amount <= 0:
@@ -278,6 +331,8 @@ class HedgeApp(tk.Tk):
             self.run_button.configure(state="normal" if self._validate_form() is None else "disabled")
 
     def _sport_keys(self) -> list[str]:
+        if self.period.get() != "full-game":
+            return list(self.config_data.periods.get(self.period.get(), {}).get("sport_keys", []))
         selected = self.league.get()
         keys: list[str] = []
         for name, values in self.config_data.sports.items():
@@ -338,7 +393,6 @@ class HedgeApp(tk.Tk):
             item_id = str(index)
             self.event_by_index[index] = event
             self.event_list.insert("", "end", iid=item_id, values=(event_name(event), local_event_time(event)))
-        self.event_list.selection_set("all")
         self.status.set(f"Found {len(events)} events. Select specific events or leave the list unselected to use the full range.")
 
     def run_analysis(self) -> None:
@@ -353,16 +407,28 @@ class HedgeApp(tk.Tk):
             odds_requirement = float(self.odds_requirement.get()) if odds_operator else None
             commence_from, commence_to = self._query_window()
             selected_items = self.event_list.selection()
-            selected = () if not selected_items or selected_items[0] == "all" else (self.event_by_index[int(selected_items[0])]["id"],)
+            specific_items = tuple(item_id for item_id in selected_items if item_id != "all")
+            selected = tuple(self.event_by_index[int(item_id)]["id"] for item_id in specific_items)
+            selected_event_sports = tuple(
+                dict.fromkeys(
+                    (
+                        self.event_by_index[int(item_id)].get("sport_key", ""),
+                        self.event_by_index[int(item_id)]["id"],
+                    )
+                    for item_id in specific_items
+                    if self.event_by_index[int(item_id)].get("sport_key")
+                )
+            )
             selected_leagues = tuple(self._sport_keys())
-            if selected_items and selected_items[0] != "all":
+            if specific_items:
                 selected_leagues = tuple(
                     dict.fromkeys(
                         self.event_by_index[int(item_id)].get("sport_key", "")
-                        for item_id in selected_items
+                        for item_id in specific_items
                         if self.event_by_index[int(item_id)].get("sport_key")
                     )
                 )
+            selected_markets = tuple(name for name, selected in self.market_vars.items() if selected.get())
             selected_hedges = tuple(name for name, selected in self.hedge_vars.items() if selected.get())
             context = build_run_context(
                 self.config_data,
@@ -372,6 +438,7 @@ class HedgeApp(tk.Tk):
                 bonus_amount=bonus_amount,
                 boost_percent=boost,
                 selected_leagues=selected_leagues,
+                selected_event_sports=selected_event_sports,
                 commence_time_from=commence_from,
                 commence_time_to=commence_to,
                 selected_event_ids=selected,
@@ -379,6 +446,8 @@ class HedgeApp(tk.Tk):
                 hedge_bookmakers=selected_hedges,
                 odds_operator=odds_operator,
                 odds_requirement_american=odds_requirement,
+                period=self.period.get(),
+                selected_markets=selected_markets,
             )
             self.status.set("Fetching odds and calculating results...")
             threading.Thread(target=self._run_analysis_worker, args=(context, self.fetch_latest.get()), daemon=True).start()
@@ -406,7 +475,7 @@ class HedgeApp(tk.Tk):
                 iid=str(index),
                 values=(
                     result.event_name,
-                    result.market_key,
+                    describe_market(result.market_key),
                     result.primary_bookmaker,
                     result.hedge_platform,
                     f"{result.locked_profit:.2f}",
@@ -427,17 +496,19 @@ class HedgeApp(tk.Tk):
         body = ttk.Frame(details, padding=16)
         body.pack(fill="both", expand=True)
         ttk.Label(body, text=result.event_name, font=("TkDefaultFont", 12, "bold")).pack(anchor="w")
-        ttk.Label(body, text=f"{result.sport_key} | {result.market_key} | {result.commence_time_local}").pack(anchor="w", pady=(4, 12))
+        ttk.Label(body, text=f"{result.sport_key} | {describe_market(result.market_key)} | {result.commence_time_local}").pack(anchor="w", pady=(4, 12))
 
         rows = [
             ("Base platform", result.primary_bookmaker),
             ("Base bet", result.primary_bet_description or result.primary_selection),
             ("Base odds", f"{result.primary_odds_decimal:.3f}"),
+            ("Base American odds", f"{decimal_to_american(result.primary_odds_decimal):+.0f}"),
             ("Base stake", f"{result.primary_stake:.2f}"),
             ("Base potential return", f"{result.primary_return:.2f}"),
             ("Hedge platform", result.hedge_platform),
             ("Hedge bet", result.hedge_bet_description or result.hedge_selection),
             ("Hedge odds", f"{result.hedge_odds_decimal:.3f}"),
+            ("Hedge American odds", f"{decimal_to_american(result.hedge_odds_decimal):+.0f}"),
             ("Hedge stake", f"{result.hedge_stake:.2f}"),
             ("Hedge potential return", f"{result.hedge_return:.2f}"),
             ("Total cash staked", f"{result.total_cash_staked:.2f}"),

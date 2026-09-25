@@ -17,8 +17,8 @@ def _quote(event_id: str) -> OddsQuote:
     )
 
 
-def test_cache_replaces_previous_snapshot_and_returns_a_copy():
-    cache = OddsCache()
+def test_cache_replaces_previous_snapshot_and_returns_a_copy(tmp_path):
+    cache = OddsCache(tmp_path / "odds.sqlite3")
     cache.replace([_quote("old")])
     snapshot = cache.get()
     snapshot.clear()
@@ -30,5 +30,12 @@ def test_cache_replaces_previous_snapshot_and_returns_a_copy():
     assert [quote.event_id for quote in cache.get()] == ["new"]
 
 
-def test_cache_starts_empty():
-    assert OddsCache().get() == []
+def test_cache_starts_empty(tmp_path):
+    assert OddsCache(tmp_path / "odds.sqlite3").get() == []
+
+
+def test_cache_survives_reopening(tmp_path):
+    path = tmp_path / "odds.sqlite3"
+    OddsCache(path).replace([_quote("persisted")])
+
+    assert [quote.event_id for quote in OddsCache(path).get()] == ["persisted"]

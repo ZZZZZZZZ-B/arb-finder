@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from typing import Iterable
 
+from promo_hedge_tool.odds_rules import decimal_to_american
 from promo_hedge_tool.strategies.base import HedgeResult
 
 
@@ -14,11 +15,14 @@ def export_csv(results: Iterable[HedgeResult], output_path: str | Path) -> str:
 
     fieldnames = [
         "event_name",
+        "sport_key",
+        "market_key",
         "commence_time_local",
         "primary_bookmaker",
         "primary_selection",
         "primary_bet_description",
         "primary_odds_decimal",
+        "primary_odds_american",
         "primary_point",
         "primary_stake",
         "primary_return",
@@ -26,6 +30,7 @@ def export_csv(results: Iterable[HedgeResult], output_path: str | Path) -> str:
         "hedge_selection",
         "hedge_bet_description",
         "hedge_odds_decimal",
+        "hedge_odds_american",
         "hedge_point",
         "hedge_stake",
         "hedge_return",
@@ -41,11 +46,14 @@ def export_csv(results: Iterable[HedgeResult], output_path: str | Path) -> str:
         for row in rows:
             writer.writerow({
                 "event_name": row["event_name"],
+                "sport_key": row["sport_key"],
+                "market_key": row["market_key"],
                 "commence_time_local": row["commence_time_local"],
                 "primary_bookmaker": row["primary_bookmaker"],
                 "primary_selection": row["primary_selection"],
                 "primary_bet_description": row["primary_bet_description"],
                 "primary_odds_decimal": row["primary_odds_decimal"],
+                "primary_odds_american": decimal_to_american(row["primary_odds_decimal"]),
                 "primary_point": row["primary_point"],
                 "primary_stake": row["primary_stake"],
                 "primary_return": row["primary_return"],
@@ -53,6 +61,7 @@ def export_csv(results: Iterable[HedgeResult], output_path: str | Path) -> str:
                 "hedge_selection": row["hedge_selection"],
                 "hedge_bet_description": row["hedge_bet_description"],
                 "hedge_odds_decimal": row["hedge_odds_decimal"],
+                "hedge_odds_american": decimal_to_american(row["hedge_odds_decimal"]),
                 "hedge_point": row["hedge_point"],
                 "hedge_stake": row["hedge_stake"],
                 "hedge_return": row["hedge_return"],

@@ -34,6 +34,7 @@ class Config:
     profit_boost: dict[str, Any] = field(default_factory=dict)
     selection: dict[str, Any] = field(default_factory=dict)
     output: dict[str, Any] = field(default_factory=dict)
+    periods: dict[str, Any] = field(default_factory=dict)
 
 
 def load_config(path: str | Path) -> Config:
@@ -61,6 +62,7 @@ def load_config(path: str | Path) -> Config:
         profit_boost=dict(raw.get("profit_boost", {})),
         selection=dict(raw.get("selection", {})),
         output=dict(raw.get("output", {})),
+        periods=dict(raw.get("periods", {})),
     )
 
 

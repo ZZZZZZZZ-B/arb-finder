@@ -44,6 +44,8 @@ def test_profit_boost_rejects_invalid_inputs():
         ProfitBoostStrategy(stake=100, boost_percent=-1)
 
 
+
+
 def test_profit_boost_applies_american_base_odds_requirement():
     strategy = ProfitBoostStrategy(stake=100, boost_percent=30, odds_operator=">=", odds_requirement_american=-200)
     assert strategy.is_eligible(quote("draftkings", "Away", 1.5))

@@ -169,9 +169,50 @@ class OddsAPIClient:
 
         response = self._request("GET", f"/v4/sports/{sport_key}/odds", params)
         payload = response.json() if response.content else []
+        quotes = self._parse_odds_payload(payload, sport_key)
+        logger.info(
+            "Odds API returned sport=%s events=%d quotes=%d bookmakers=%s markets=%s",
+            sport_key,
+            len(payload) if isinstance(payload, list) else 0,
+            len(quotes),
+            ",".join(bookmakers),
+            ",".join(markets),
+        )
+        return quotes
+
+    def get_event_odds(
+        self,
+        sport_key: str,
+        event_id: str,
+        bookmakers: list[str],
+        markets: list[str],
+        odds_format: str = "decimal",
+        date_format: str = "iso",
+    ) -> list[OddsQuote]:
+        params: dict[str, Any] = {
+            "bookmakers": ",".join(bookmakers),
+            "markets": ",".join(markets),
+            "oddsFormat": odds_format,
+            "dateFormat": date_format,
+        }
+        response = self._request("GET", f"/v4/sports/{sport_key}/events/{event_id}/odds", params)
+        payload = response.json() if response.content else {}
+        quotes = self._parse_odds_payload(payload, sport_key)
+        logger.info(
+            "Event odds API returned sport=%s event=%s quotes=%d bookmakers=%s markets=%s",
+            sport_key,
+            event_id,
+            len(quotes),
+            ",".join(bookmakers),
+            ",".join(markets),
+        )
+        return quotes
+
+    def _parse_odds_payload(self, payload: Any, sport_key: str) -> list[OddsQuote]:
+        events = payload if isinstance(payload, list) else [payload] if isinstance(payload, dict) and payload else []
         quotes: list[OddsQuote] = []
 
-        for event in payload:
+        for event in events:
             event_id = event.get("id") or event.get("event_id") or ""
             commence_time = event.get("commence_time") or event.get("commenceTime")
             home_team = event.get("home_team") or ""
@@ -197,14 +238,6 @@ class OddsAPIClient:
                             last_update=event.get("last_update"),
                         )
                         quotes.append(quote)
-        logger.info(
-            "Odds API returned sport=%s events=%d quotes=%d bookmakers=%s markets=%s",
-            sport_key,
-            len(payload) if isinstance(payload, list) else 0,
-            len(quotes),
-            ",".join(bookmakers),
-            ",".join(markets),
-        )
         return quotes
 
     def get_events(self, sport_key: str, **kwargs) -> list[dict]:
