@@ -14,6 +14,12 @@ from promo_hedge_tool.odds_client.models import OddsQuote, SportInfo
 logger = logging.getLogger(__name__)
 
 
+def mask_api_key(api_key: str) -> str:
+    if len(api_key) <= 4:
+        return "*" * len(api_key)
+    return f"{api_key[:3]}...{api_key[-1]}"
+
+
 class OddsAPIError(Exception):
     def __init__(self, message: str, status_code: Optional[int] = None, response: Optional[Any] = None):
         super().__init__(message)
@@ -72,7 +78,8 @@ class OddsAPIClient:
                 except ValueError:
                     self._key_pool.report_quota(key, None)
             logger.info(
-                "Odds API quota: used=%s, remaining=%s, last_request=%s",
+                "Odds API quota: key=%s, used=%s, remaining=%s, last_request=%s",
+                mask_api_key(key),
                 requests_used if requests_used is not None else "unknown",
                 remaining if remaining is not None else "unknown",
                 requests_last if requests_last is not None else "unknown",

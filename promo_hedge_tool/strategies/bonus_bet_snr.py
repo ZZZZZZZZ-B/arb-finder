@@ -3,17 +3,23 @@ from __future__ import annotations
 from typing import Optional
 
 from promo_hedge_tool.odds_client.models import OddsQuote
+from promo_hedge_tool.odds_rules import meets_american_requirement
 from promo_hedge_tool.strategies.base import HedgeResult, PromoStrategy, describe_quote
 
 
 class BonusBetSNRStrategy(PromoStrategy):
-    def __init__(self, amount: float, min_decimal_odds: float, primary_bookmaker: str | None = None):
+    def __init__(self, amount: float, odds_operator: str | None = None, odds_requirement_american: float | None = None, primary_bookmaker: str | None = None):
         self.amount = amount
-        self.min_decimal_odds = min_decimal_odds
+        self.odds_operator = odds_operator
+        self.odds_requirement_american = odds_requirement_american
         self.primary_bookmaker = primary_bookmaker
 
     def is_eligible(self, primary_quote: OddsQuote) -> bool:
-        return primary_quote.decimal_odds >= self.min_decimal_odds
+        return primary_quote.decimal_odds > 1.0 and meets_american_requirement(
+            primary_quote.decimal_odds,
+            self.odds_operator,
+            self.odds_requirement_american,
+        )
 
     def calculate(self, primary_quote: OddsQuote, hedge_quote: OddsQuote) -> Optional[HedgeResult]:
         if hedge_quote.decimal_odds <= 1.0:

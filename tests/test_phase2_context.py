@@ -10,8 +10,37 @@ class ConfigStub:
 
 
 def test_runtime_context_uses_all_other_configured_platforms_as_hedges():
-    context = build_run_context(ConfigStub(), "bonus-bet", "fanduel")
+    context = build_run_context(
+        ConfigStub(),
+        "bonus-bet",
+        "fanduel",
+        bonus_amount=100,
+        odds_operator=">=",
+        odds_requirement_american=240,
+    )
     assert context.hedge_bookmakers == ("draftkings", "proline")
+
+
+def test_bonus_bet_context_requires_ui_parameters():
+    with pytest.raises(ValueError, match="Bonus Bet amount"):
+        build_run_context(ConfigStub(), "bonus-bet", "fanduel")
+
+
+def test_bonus_bet_context_accepts_american_odds_requirement():
+    context = build_run_context(
+        ConfigStub(),
+        "bonus-bet",
+        "fanduel",
+        bonus_amount=100,
+        odds_operator=">=",
+        odds_requirement_american=240,
+    )
+    assert context.odds_requirement_american == 240
+
+
+def test_bonus_bet_context_requires_american_value_when_operator_is_selected():
+    with pytest.raises(ValueError, match="American odds requirement"):
+        build_run_context(ConfigStub(), "bonus-bet", "fanduel", bonus_amount=100, odds_operator=">=")
 
 
 def test_runtime_context_uses_selected_hedge_platforms():

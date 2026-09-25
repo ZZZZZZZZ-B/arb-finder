@@ -11,6 +11,7 @@ from promo_hedge_tool.odds_client.client import OddsAPIClient, OddsAPIError
 from promo_hedge_tool.odds_client.key_pool import AllKeysExhaustedError, KeyPool
 from promo_hedge_tool.odds_client.models import OddsQuote
 from promo_hedge_tool.odds_client.sport_key_resolver import SportKeyResolver
+from promo_hedge_tool.odds_cache import odds_cache
 from promo_hedge_tool.ranker import rank_top_n
 from promo_hedge_tool.run_context import RunContext
 from promo_hedge_tool.strategies.base import HedgeResult
@@ -23,10 +24,11 @@ logger = logging.getLogger(__name__)
 
 def build_strategy(config: Config, context: RunContext):
     if context.mode == "bonus-bet":
-        bonus = config.promo.bonus_bet_snr
         return BonusBetSNRStrategy(
-            amount=float(bonus.get("amount", 100)),
-            min_decimal_odds=float(bonus.get("min_decimal_odds", 3.4)),
+            amount=float(context.bonus_amount),
+            odds_operator=context.odds_operator,
+            odds_requirement_american=context.odds_requirement_american,
+            primary_bookmaker=context.base_bookmaker,
         )
     return ProfitBoostStrategy(
         float(context.stake),
@@ -50,38 +52,14 @@ def resolve_sport_keys(config: Config, resolver: SportKeyResolver, selected: tup
     return {name: keys for name, keys in result.items() if keys}
 
 
-def execute(config: Config, context: RunContext, output_dir: str | Path | None = None) -> list[HedgeResult]:
-    api_keys = resolve_api_keys(config.odds_api.api_key_envs)
-    client = OddsAPIClient(KeyPool(api_keys))
-    resolver = SportKeyResolver(client)
+def _calculate(
+    config: Config,
+    context: RunContext,
+    all_quotes: list[OddsQuote],
+    soccer_keys: set[str],
+    output_dir: str | Path | None = None,
+) -> list[HedgeResult]:
     strategy = build_strategy(config, context)
-    start = context.commence_time_from or datetime.now(timezone.utc)
-    end = context.commence_time_to or start + timedelta(hours=config.event_window_hours)
-    sport_keys = resolve_sport_keys(config, resolver, context.selected_leagues)
-    soccer_keys = set(sport_keys.get("soccer", []))
-    bookmakers = [context.base_bookmaker, *context.hedge_bookmakers]
-    all_quotes: list[OddsQuote] = []
-
-    for logical_name, keys in sport_keys.items():
-        markets = ["h2h", "spreads", "totals"]
-        for sport_key in keys:
-            try:
-                all_quotes.extend(
-                    client.get_odds(
-                        sport_key,
-                        bookmakers,
-                        markets,
-                        start,
-                        end,
-                        odds_format=config.odds_api.odds_format,
-                        date_format=config.odds_api.date_format,
-                    )
-                )
-            except AllKeysExhaustedError:
-                raise
-            except OddsAPIError as exc:
-                logger.warning("Skipping sport %s: %s", sport_key, exc)
-
     if context.selected_event_ids:
         all_quotes = [quote for quote in all_quotes if quote.event_id in context.selected_event_ids]
     filtered = filter_binary_quotes(all_quotes, soccer_keys)
@@ -114,3 +92,48 @@ def execute(config: Config, context: RunContext, output_dir: str | Path | None =
         "boost_percent": context.boost_percent,
     })
     return ranked
+
+
+def execute(
+    config: Config,
+    context: RunContext,
+    output_dir: str | Path | None = None,
+    fetch_latest: bool = True,
+) -> list[HedgeResult]:
+    soccer_keys: set[str] = set()
+    if fetch_latest:
+        odds_cache.clear()
+        api_keys = resolve_api_keys(config.odds_api.api_key_envs)
+        client = OddsAPIClient(KeyPool(api_keys))
+        resolver = SportKeyResolver(client)
+        sport_keys = resolve_sport_keys(config, resolver, context.selected_leagues)
+        soccer_keys = set(sport_keys.get("soccer", []))
+        start = context.commence_time_from or datetime.now(timezone.utc)
+        end = context.commence_time_to or start + timedelta(hours=config.event_window_hours)
+        bookmakers = [context.base_bookmaker, *context.hedge_bookmakers]
+        all_quotes: list[OddsQuote] = []
+        for _logical_name, keys in sport_keys.items():
+            for sport_key in keys:
+                try:
+                    all_quotes.extend(client.get_odds(
+                        sport_key,
+                        bookmakers,
+                        ["h2h", "spreads", "totals"],
+                        start,
+                        end,
+                        odds_format=config.odds_api.odds_format,
+                        date_format=config.odds_api.date_format,
+                    ))
+                except AllKeysExhaustedError:
+                    raise
+                except OddsAPIError as exc:
+                    logger.warning("Skipping sport %s: %s", sport_key, exc)
+        odds_cache.replace(all_quotes)
+    else:
+        all_quotes = odds_cache.get()
+        if not all_quotes:
+            raise ValueError("No cached odds are available. Fetch the latest Odds API data first.")
+        configured_soccer_keys = set(config.sports.get("soccer", {}).get("leagues", []))
+        selected_soccer_keys = configured_soccer_keys.intersection(context.selected_leagues) if context.selected_leagues else configured_soccer_keys
+        soccer_keys = {quote.sport_key for quote in all_quotes if quote.sport_key in selected_soccer_keys}
+    return _calculate(config, context, all_quotes, soccer_keys, output_dir)

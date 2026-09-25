@@ -9,14 +9,6 @@ import yaml
 
 
 @dataclass
-class PromoConfig:
-    type: str
-    primary_bookmaker: str
-    hedge_bookmakers: list[str]
-    bonus_bet_snr: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
 class OddsAPIConfig:
     api_key_envs: list[str]
     key_rotation_strategy: str = "round_robin"
@@ -33,7 +25,6 @@ class UIConfig:
 
 @dataclass
 class Config:
-    promo: PromoConfig
     event_window_hours: int = 336
     top_n: int = 10
     sports: dict[str, Any] = field(default_factory=dict)
@@ -49,16 +40,9 @@ def load_config(path: str | Path) -> Config:
     with open(path, "r", encoding="utf-8") as fh:
         raw = yaml.safe_load(fh) or {}
 
-    promo = raw.get("promo", {})
     odds = raw.get("odds_api", {})
     ui = raw.get("ui", {})
     return Config(
-        promo=PromoConfig(
-            type=promo.get("type", "bonus_bet_snr"),
-            primary_bookmaker=promo.get("primary_bookmaker", "draftkings"),
-            hedge_bookmakers=promo.get("hedge_bookmakers", ["fanduel"]),
-            bonus_bet_snr=promo.get("bonus_bet_snr", {"amount": 100, "min_decimal_odds": 3.4}),
-        ),
         event_window_hours=int(raw.get("event_window_hours", 336)),
         top_n=int(raw.get("top_n", 10)),
         sports=dict(raw.get("sports", {})),

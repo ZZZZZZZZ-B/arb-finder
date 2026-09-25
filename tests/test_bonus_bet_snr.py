@@ -3,7 +3,7 @@ from promo_hedge_tool.odds_client.models import OddsQuote
 
 
 def test_bonus_bet_snr_calculation():
-    strategy = BonusBetSNRStrategy(amount=100.0, min_decimal_odds=3.4, primary_bookmaker="draftkings")
+    strategy = BonusBetSNRStrategy(amount=100.0, odds_operator=">=", odds_requirement_american=240, primary_bookmaker="draftkings")
     primary = OddsQuote(
         sport_key="basketball_nba",
         event_id="e1",
@@ -36,7 +36,7 @@ def test_bonus_bet_snr_calculation():
 
 
 def test_bonus_bet_invalid_if_primary_is_too_low():
-    strategy = BonusBetSNRStrategy(amount=100.0, min_decimal_odds=3.4, primary_bookmaker="draftkings")
+    strategy = BonusBetSNRStrategy(amount=100.0, odds_operator=">=", odds_requirement_american=240, primary_bookmaker="draftkings")
     primary = OddsQuote(
         sport_key="basketball_nba",
         event_id="e1",
@@ -53,7 +53,7 @@ def test_bonus_bet_invalid_if_primary_is_too_low():
 
 
 def test_bonus_bet_returns_none_if_hedge_is_invalid():
-    strategy = BonusBetSNRStrategy(amount=100.0, min_decimal_odds=3.4, primary_bookmaker="draftkings")
+    strategy = BonusBetSNRStrategy(amount=100.0, odds_operator=">=", odds_requirement_american=240, primary_bookmaker="draftkings")
     primary = OddsQuote(
         sport_key="basketball_nba",
         event_id="e1",

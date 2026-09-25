@@ -69,9 +69,13 @@ def build_sport_keys(config: Config, resolver: SportKeyResolver) -> dict[str, li
 
 
 def run_once(config_path: str | Path = "config/config.yaml") -> list[HedgeResult]:
+    raise RuntimeError(
+        "The direct CLI is deprecated because promotion parameters are now supplied by the GUI. "
+        "Run 'python -m promo_hedge_tool' instead."
+    )
+
     logger = logging.getLogger(__name__)
     config = load_config(config_path)
-    logger.info("Loaded config from %s", config_path)
     api_keys = resolve_api_keys(config.odds_api.api_key_envs)
     logger.info("Resolved %d API key(s)", len(api_keys))
     key_pool = KeyPool(api_keys)

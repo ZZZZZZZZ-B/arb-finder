@@ -18,6 +18,7 @@ class RunContext:
     team_keyword: str = ""
     odds_operator: str | None = None
     odds_requirement_american: float | None = None
+    bonus_amount: float | None = None
 
     def __post_init__(self) -> None:
         if self.mode not in {"bonus-bet", "profit-boost"}:
@@ -26,7 +27,16 @@ class RunContext:
             raise ValueError("base_bookmaker is required")
         if self.base_bookmaker in self.hedge_bookmakers:
             raise ValueError("base bookmaker cannot also be a hedge bookmaker")
-        if self.mode == "profit-boost":
+        if not self.hedge_bookmakers:
+            raise ValueError("Select at least one hedge bookmaker")
+        if self.mode == "bonus-bet":
+            if self.bonus_amount is None or self.bonus_amount <= 0:
+                raise ValueError("Bonus Bet amount must be greater than zero")
+            if self.odds_operator not in {None, ">=", "<="}:
+                raise ValueError("odds_operator must be >= or <=")
+            if self.odds_operator is not None and self.odds_requirement_american is None:
+                raise ValueError("An American odds requirement is required when an operator is selected")
+        elif self.mode == "profit-boost":
             if self.stake is None or self.stake <= 0:
                 raise ValueError("Profit Boost stake must be greater than zero")
             if self.boost_percent is None or self.boost_percent < 0:
@@ -60,6 +70,7 @@ def build_run_context(
     hedge_bookmakers: tuple[str, ...] | None = None,
     odds_operator: str | None = None,
     odds_requirement_american: float | None = None,
+    bonus_amount: float | None = None,
 ) -> RunContext:
     available = configured_bookmakers(config)
     if base_bookmaker not in available:
@@ -80,6 +91,7 @@ def build_run_context(
         base_bookmaker=base_bookmaker,
         hedge_bookmakers=hedge,
         stake=stake,
+        bonus_amount=bonus_amount,
         boost_percent=boost_percent,
         selected_leagues=selected_leagues,
         commence_time_from=commence_time_from,

@@ -107,6 +107,7 @@ class HedgeApp(tk.Tk):
         self.events: list[dict] = []
         self.event_by_index: dict[int, dict] = {}
         self.hedge_vars: dict[str, tk.BooleanVar] = {}
+        self.run_button: ttk.Button | None = None
 
         BannerHeader(self, self.config_data).pack(fill="x")
         self._build_form()
@@ -129,10 +130,12 @@ class HedgeApp(tk.Tk):
         self.odds_requirement = tk.StringVar(value="")
         self.league = tk.StringVar(value="All")
         self.keyword = tk.StringVar(value="")
+        self.fetch_latest = tk.BooleanVar(value=True)
         self.status = tk.StringVar(value="Set the query range, then click 'Find Events'.")
 
-        default_start = datetime.now(timezone.utc).date()
-        default_end = (datetime.now(timezone.utc) + timedelta(hours=self.config_data.event_window_hours)).date()
+        local_now = datetime.now().astimezone()
+        default_start = local_now.date()
+        default_end = (local_now + timedelta(hours=self.config_data.event_window_hours)).date()
         start_date = StableDateEntry(body, date_pattern="mm/dd/yyyy", textvariable=tk.StringVar(), width=18)
         end_date = StableDateEntry(body, date_pattern="mm/dd/yyyy", textvariable=tk.StringVar(), width=18)
         start_date.set_date(default_start)
@@ -141,23 +144,26 @@ class HedgeApp(tk.Tk):
         self.to_date = end_date
 
         fields = [
-            ("Mode", ttk.Combobox(body, textvariable=self.mode, values=["bonus-bet", "profit-boost"], state="readonly")),
-            ("Base bookmaker", ttk.Combobox(body, textvariable=self.base, values=configured_bookmakers(self.config_data), state="readonly")),
-            ("Cash stake", ttk.Entry(body, textvariable=self.stake)),
-            ("Boost percentage", ttk.Entry(body, textvariable=self.boost)),
-            ("Base odds requirement", ttk.Combobox(body, textvariable=self.odds_operator, values=["Any", ">=", "<="], state="readonly")),
-            ("American odds value", ttk.Entry(body, textvariable=self.odds_requirement)),
-            ("League", ttk.Combobox(body, textvariable=self.league, values=["All"] + self._league_names(), state="readonly")),
-            ("Start date (MM/DD/YYYY)", start_date),
-            ("End date (MM/DD/YYYY)", end_date),
-            ("Team keyword", ttk.Entry(body, textvariable=self.keyword)),
+            ("Mode *", ttk.Combobox(body, textvariable=self.mode, values=["bonus-bet", "profit-boost"], state="readonly")),
+            ("Base bookmaker *", ttk.Combobox(body, textvariable=self.base, values=configured_bookmakers(self.config_data), state="readonly")),
+            ("Cash stake / Bonus amount *", ttk.Entry(body, textvariable=self.stake)),
+            ("Boost percentage *", ttk.Entry(body, textvariable=self.boost)),
+            ("Base odds operator (optional)", ttk.Combobox(body, textvariable=self.odds_operator, values=["Any", ">=", "<="], state="readonly")),
+            ("American odds value (optional)", ttk.Entry(body, textvariable=self.odds_requirement)),
+            ("League (optional)", ttk.Combobox(body, textvariable=self.league, values=["All"] + self._league_names(), state="readonly")),
+            ("Start date *", start_date),
+            ("End date *", end_date),
+            ("Team keyword (optional)", ttk.Entry(body, textvariable=self.keyword)),
         ]
         for row, (title, widget) in enumerate(fields):
             ttk.Label(body, text=title).grid(row=row, column=0, sticky="w", padx=(0, 12), pady=5)
             widget.grid(row=row, column=1, sticky="ew", pady=5)
 
         base_widget = fields[1][1]
-        base_widget.bind("<<ComboboxSelected>>", lambda _event: self._refresh_hedge_selection())
+        base_widget.bind("<<ComboboxSelected>>", lambda _event: (self._refresh_hedge_selection(), self._refresh_run_button()))
+        self.mode.trace_add("write", lambda *_args: self._on_mode_changed())
+        for variable in (self.base, self.stake, self.boost, self.odds_operator, self.odds_requirement):
+            variable.trace_add("write", lambda *_args: self._refresh_run_button())
 
         ttk.Label(body, text="Hedge bookmakers").grid(row=10, column=0, sticky="nw", padx=(0, 12), pady=5)
         hedge_frame = ttk.Frame(body)
@@ -179,8 +185,14 @@ class HedgeApp(tk.Tk):
         ttk.Label(body, textvariable=self.status).grid(row=12, column=0, columnspan=3, sticky="w", pady=(8, 4))
         actions = ttk.Frame(body)
         actions.grid(row=13, column=0, columnspan=3, sticky="e")
+        ttk.Checkbutton(
+            body,
+            text="Fetch latest Odds API data",
+            variable=self.fetch_latest,
+        ).grid(row=13, column=0, sticky="w", pady=5)
         ttk.Button(actions, text="Find Events", command=self.query_events).pack(side="left", padx=4)
-        ttk.Button(actions, text="Run Analysis", command=self.run_analysis).pack(side="left", padx=4)
+        self.run_button = ttk.Button(actions, text="Run Analysis", command=self.run_analysis)
+        self.run_button.pack(side="left", padx=4)
 
         ttk.Label(body, text="Top 3 results by locked profit").grid(row=14, column=0, sticky="nw", padx=(0, 12), pady=5)
         self.result_list = ttk.Treeview(
@@ -205,6 +217,7 @@ class HedgeApp(tk.Tk):
         self.result_list.column("profit", anchor="e", width=150, minwidth=140, stretch=False)
         self.result_list.grid(row=15, column=1, sticky="nsew", pady=5)
         self.result_list.bind("<Double-1>", self._show_selected_result)
+        self._on_mode_changed()
 
     def _league_names(self) -> list[str]:
         names: list[str] = []
@@ -221,9 +234,48 @@ class HedgeApp(tk.Tk):
             child.destroy()
         self.hedge_vars = {}
         for name in available:
-            selected = tk.BooleanVar(value=True)
+            platform_config = self.config_data.platforms.get(name, {})
+            selected = tk.BooleanVar(value=bool(platform_config.get("enabled", False)))
             self.hedge_vars[name] = selected
-            ttk.Checkbutton(self.hedge_frame, text=name, variable=selected).pack(anchor="w")
+            ttk.Checkbutton(self.hedge_frame, text=name, variable=selected, command=self._refresh_run_button).pack(anchor="w")
+
+    def _on_mode_changed(self) -> None:
+        is_bonus_bet = self.mode.get() == "bonus-bet"
+        self._set_field_state(self.boost, not is_bonus_bet)
+        self._refresh_run_button()
+
+    def _set_field_state(self, variable: tk.StringVar, enabled: bool) -> None:
+        for child in self.winfo_children():
+            for widget in child.winfo_children():
+                if isinstance(widget, ttk.Entry) and str(widget.cget("textvariable")) == str(variable):
+                    widget.configure(state="normal" if enabled else "disabled")
+
+    def _validate_form(self) -> str | None:
+        if not self.base.get() or not self.mode.get():
+            return "Mode and base bookmaker are required."
+        if not any(selected.get() for selected in self.hedge_vars.values()):
+            return "Select at least one hedge bookmaker."
+        try:
+            amount = float(self.stake.get())
+            if amount <= 0:
+                return "Cash stake or bonus amount must be greater than zero."
+            if self.mode.get() == "bonus-bet":
+                if self.odds_operator.get() != "Any":
+                    float(self.odds_requirement.get())
+            else:
+                boost = float(self.boost.get())
+                if boost < 0:
+                    return "Boost percentage must not be negative."
+                if self.odds_operator.get() != "Any":
+                    float(self.odds_requirement.get())
+            self._query_window()
+        except (TypeError, ValueError):
+            return "Complete all required numeric fields with valid values."
+        return None
+
+    def _refresh_run_button(self) -> None:
+        if self.run_button is not None:
+            self.run_button.configure(state="normal" if self._validate_form() is None else "disabled")
 
     def _sport_keys(self) -> list[str]:
         selected = self.league.get()
@@ -243,8 +295,8 @@ class HedgeApp(tk.Tk):
         end_date = self.to_date.get_date()
         if end_date < start_date:
             raise ValueError("End date must be on or after start date.")
-        start = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
-        end = datetime.combine(end_date, datetime.max.time(), tzinfo=timezone.utc).replace(microsecond=0)
+        start = datetime.combine(start_date, datetime.min.time()).astimezone(timezone.utc)
+        end = datetime.combine(end_date, datetime.max.time()).astimezone(timezone.utc).replace(microsecond=0)
         return start, end
 
     def query_events(self) -> None:
@@ -263,12 +315,13 @@ class HedgeApp(tk.Tk):
             client = OddsAPIClient(KeyPool(api_keys))
             events: list[dict] = []
             for sport_key in self._sport_keys():
-                events.extend(client.get_events(
+                sport_events = client.get_events(
                     sport_key,
                     commenceTimeFrom=client._isoformat(commence_from),
                     commenceTimeTo=client._isoformat(commence_to),
                     dateFormat="iso",
-                ))
+                )
+                events.extend({**event, "sport_key": sport_key} for event in sport_events)
             filtered = filter_events(events, self.keyword.get())
             self.after(0, self._show_events, filtered)
         except Exception as exc:  # pragma: no cover - network/UI boundary
@@ -290,21 +343,35 @@ class HedgeApp(tk.Tk):
 
     def run_analysis(self) -> None:
         try:
+            validation_error = self._validate_form()
+            if validation_error:
+                raise ValueError(validation_error)
             stake = float(self.stake.get()) if self.mode.get() == "profit-boost" else None
+            bonus_amount = float(self.stake.get()) if self.mode.get() == "bonus-bet" else None
             boost = float(self.boost.get()) if self.mode.get() == "profit-boost" else None
-            odds_operator = None if self.mode.get() != "profit-boost" or self.odds_operator.get() == "Any" else self.odds_operator.get()
+            odds_operator = None if self.odds_operator.get() == "Any" else self.odds_operator.get()
             odds_requirement = float(self.odds_requirement.get()) if odds_operator else None
             commence_from, commence_to = self._query_window()
             selected_items = self.event_list.selection()
             selected = () if not selected_items or selected_items[0] == "all" else (self.event_by_index[int(selected_items[0])]["id"],)
+            selected_leagues = tuple(self._sport_keys())
+            if selected_items and selected_items[0] != "all":
+                selected_leagues = tuple(
+                    dict.fromkeys(
+                        self.event_by_index[int(item_id)].get("sport_key", "")
+                        for item_id in selected_items
+                        if self.event_by_index[int(item_id)].get("sport_key")
+                    )
+                )
             selected_hedges = tuple(name for name, selected in self.hedge_vars.items() if selected.get())
             context = build_run_context(
                 self.config_data,
                 self.mode.get(),
                 self.base.get(),
                 stake=stake,
+                bonus_amount=bonus_amount,
                 boost_percent=boost,
-                selected_leagues=tuple(self._sport_keys()),
+                selected_leagues=selected_leagues,
                 commence_time_from=commence_from,
                 commence_time_to=commence_to,
                 selected_event_ids=selected,
@@ -314,13 +381,13 @@ class HedgeApp(tk.Tk):
                 odds_requirement_american=odds_requirement,
             )
             self.status.set("Fetching odds and calculating results...")
-            threading.Thread(target=self._run_analysis_worker, args=(context,), daemon=True).start()
+            threading.Thread(target=self._run_analysis_worker, args=(context, self.fetch_latest.get()), daemon=True).start()
         except (ValueError, KeyError) as exc:
             messagebox.showerror("Run Parameter Error", str(exc))
 
-    def _run_analysis_worker(self, context) -> None:
+    def _run_analysis_worker(self, context, fetch_latest: bool) -> None:
         try:
-            results = execute(self.config_data, context)
+            results = execute(self.config_data, context, fetch_latest=fetch_latest)
             top_results = sorted(results, key=lambda result: result.locked_profit, reverse=True)[:3]
             self.after(0, self._show_results, top_results)
             self.after(0, lambda: self.status.set(f"Analysis complete. Generated {len(results)} results in output."))
