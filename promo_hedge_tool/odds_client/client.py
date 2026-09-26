@@ -128,7 +128,8 @@ class OddsAPIClient:
         raise OddsAPIError(f"Request failed for {path} without response.")
 
     def get_sports(self, include_inactive: bool = False) -> list[SportInfo]:
-        payload = self._request("GET", "/v4/sports", {})
+        params = {"all": "true"} if include_inactive else {}
+        payload = self._request("GET", "/v4/sports", params)
         data = payload.json() if payload.content else []
         sports: list[SportInfo] = []
         for item in data:

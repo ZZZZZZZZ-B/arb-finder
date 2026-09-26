@@ -25,11 +25,11 @@ class SportKeyResolver:
                 return [sport_key]
         return []
 
-    def resolve_dynamic_prefix(self, prefix: str) -> list[str]:
+    def resolve_dynamic_prefix(self, prefix: str, include_inactive: bool = False) -> list[str]:
         matches: list[str] = []
         for item in self._load_sports():
             key = item.get("key", "")
-            if key.startswith(prefix) and item.get("active", False):
+            if key.startswith(prefix) and (include_inactive or item.get("active", False)):
                 matches.append(key)
         return matches
 

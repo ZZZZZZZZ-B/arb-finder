@@ -21,6 +21,7 @@ from promo_hedge_tool.event_selection import event_name, filter_events, local_ev
 from promo_hedge_tool.logging_config import configure_logging
 from promo_hedge_tool.odds_client.client import OddsAPIClient
 from promo_hedge_tool.odds_client.key_pool import KeyPool
+from promo_hedge_tool.odds_client.sport_key_resolver import SportKeyResolver
 from promo_hedge_tool.run_context import build_run_context, configured_bookmakers
 from promo_hedge_tool.odds_rules import decimal_to_american
 from promo_hedge_tool.strategies.base import describe_market
@@ -330,7 +331,7 @@ class HedgeApp(tk.Tk):
         if self.run_button is not None:
             self.run_button.configure(state="normal" if self._validate_form() is None else "disabled")
 
-    def _sport_keys(self) -> list[str]:
+    def _sport_keys(self, resolver: SportKeyResolver | None = None) -> list[str]:
         if self.period.get() != "full-game":
             return list(self.config_data.periods.get(self.period.get(), {}).get("sport_keys", []))
         selected = self.league.get()
@@ -343,6 +344,15 @@ class HedgeApp(tk.Tk):
             elif selected == "All" or selected == name:
                 if values.get("sport_key"):
                     keys.append(values["sport_key"])
+                elif values.get("dynamic_prefix"):
+                    if resolver:
+                        keys.extend(
+                            resolver.resolve_dynamic_prefix(
+                                values["dynamic_prefix"], include_inactive=True
+                            )
+                        )
+                    else:
+                        keys.append(name)
         return list(dict.fromkeys(keys))
 
     def _query_window(self) -> tuple:
@@ -368,8 +378,9 @@ class HedgeApp(tk.Tk):
     def _query_events_worker(self, api_keys, commence_from, commence_to) -> None:
         try:
             client = OddsAPIClient(KeyPool(api_keys))
+            resolver = SportKeyResolver(client)
             events: list[dict] = []
-            for sport_key in self._sport_keys():
+            for sport_key in self._sport_keys(resolver):
                 sport_events = client.get_events(
                     sport_key,
                     commenceTimeFrom=client._isoformat(commence_from),
