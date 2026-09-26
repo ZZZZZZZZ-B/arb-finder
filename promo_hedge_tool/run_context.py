@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
+
+from promo_hedge_tool.odds_client.models import OddsQuote
 
 
 @dataclass(frozen=True)
@@ -64,6 +66,34 @@ def configured_bookmakers(config) -> list[str]:
     if names:
         return names
     return list(dict.fromkeys(config.odds_api.bookmakers))
+
+
+def api_bookmaker_key(config, platform_name: str) -> str:
+    platform = config.platforms.get(platform_name, {})
+    return str(platform.get("bookmaker_key", platform_name))
+
+
+def normalize_bookmaker_quotes(config, quotes: list[OddsQuote]) -> list[OddsQuote]:
+    platform_by_api_key = {
+        api_bookmaker_key(config, name): (name, str(platform.get("title", name)))
+        for name, platform in config.platforms.items()
+        if platform.get("source") == "odds_api"
+    }
+    normalized: list[OddsQuote] = []
+    for quote in quotes:
+        platform = platform_by_api_key.get(quote.bookmaker_key)
+        if platform is None:
+            normalized.append(quote)
+            continue
+        platform_name, platform_title = platform
+        normalized.append(
+            replace(
+                quote,
+                bookmaker_key=platform_name,
+                bookmaker_title=platform_title,
+            )
+        )
+    return normalized
 
 
 def build_run_context(

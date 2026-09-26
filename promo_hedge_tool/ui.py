@@ -240,8 +240,20 @@ class HedgeApp(tk.Tk):
             if name == "soccer":
                 names.extend(values.get("leagues", []))
             else:
-                names.append(name)
+                names.append(str(values.get("title", name)))
         return names
+
+    def _selected_league_name(self, selection: str) -> str:
+        if selection == "All":
+            return selection
+        for name, values in self.config_data.sports.items():
+            if name == "soccer":
+                if selection in values.get("leagues", []):
+                    return selection
+                continue
+            if selection in {name, values.get("title"), values.get("sport_key")}:
+                return name
+        return selection
 
     def _period_values(self) -> list[str]:
         return ["full-game", *self.config_data.periods]
@@ -270,8 +282,9 @@ class HedgeApp(tk.Tk):
             self.league.set("All")
         else:
             period_sports = self.config_data.periods.get(self.period.get(), {}).get("sport_keys", [])
-            self.league_widget.configure(values=list(period_sports), state="disabled")
-            self.league.set(period_sports[0] if len(period_sports) == 1 else "All")
+            period_titles = [self._sport_display_title(sport_key) for sport_key in period_sports]
+            self.league_widget.configure(values=period_titles, state="disabled")
+            self.league.set(period_titles[0] if len(period_titles) == 1 else "All")
         self._refresh_market_selection()
         self._refresh_run_button()
 
@@ -284,7 +297,12 @@ class HedgeApp(tk.Tk):
             platform_config = self.config_data.platforms.get(name, {})
             selected = tk.BooleanVar(value=bool(platform_config.get("enabled", False)))
             self.hedge_vars[name] = selected
-            ttk.Checkbutton(self.hedge_frame, text=name, variable=selected, command=self._refresh_run_button).pack(anchor="w")
+            ttk.Checkbutton(
+                self.hedge_frame,
+                text=platform_config.get("title", name),
+                variable=selected,
+                command=self._refresh_run_button,
+            ).pack(anchor="w")
 
     def _on_mode_changed(self) -> None:
         is_bonus_bet = self.mode.get() == "bonus-bet"
@@ -334,7 +352,7 @@ class HedgeApp(tk.Tk):
     def _sport_keys(self, resolver: SportKeyResolver | None = None) -> list[str]:
         if self.period.get() != "full-game":
             return list(self.config_data.periods.get(self.period.get(), {}).get("sport_keys", []))
-        selected = self.league.get()
+        selected = self._selected_league_name(self.league.get())
         keys: list[str] = []
         for name, values in self.config_data.sports.items():
             if name == "soccer":
@@ -354,6 +372,14 @@ class HedgeApp(tk.Tk):
                     else:
                         keys.append(name)
         return list(dict.fromkeys(keys))
+
+    def _sport_display_title(self, sport_key: str) -> str:
+        for values in self.config_data.sports.values():
+            if values.get("sport_key") == sport_key:
+                return str(values.get("title", sport_key))
+            if values.get("dynamic_prefix") and sport_key.startswith(values["dynamic_prefix"]):
+                return str(values.get("title", sport_key))
+        return sport_key
 
     def _query_window(self) -> tuple:
         start_date = self.from_date.get_date()
@@ -387,7 +413,15 @@ class HedgeApp(tk.Tk):
                     commenceTimeTo=client._isoformat(commence_to),
                     dateFormat="iso",
                 )
-                events.extend({**event, "sport_key": sport_key} for event in sport_events)
+                sport_title = self._sport_display_title(sport_key)
+                events.extend(
+                    {
+                        **event,
+                        "sport_key": sport_key,
+                        "display_sport_title": sport_title,
+                    }
+                    for event in sport_events
+                )
             filtered = filter_events(events, self.keyword.get())
             self.after(0, self._show_events, filtered)
         except Exception as exc:  # pragma: no cover - network/UI boundary
@@ -403,7 +437,9 @@ class HedgeApp(tk.Tk):
         for index, event in enumerate(events):
             item_id = str(index)
             self.event_by_index[index] = event
-            self.event_list.insert("", "end", iid=item_id, values=(event_name(event), local_event_time(event)))
+            sport_title = event.get("display_sport_title") or event.get("sport_title") or event.get("sport_key", "")
+            display_name = f"{sport_title} | {event_name(event)}" if sport_title else event_name(event)
+            self.event_list.insert("", "end", iid=item_id, values=(display_name, local_event_time(event)))
         self.status.set(f"Found {len(events)} events. Select specific events or leave the list unselected to use the full range.")
 
     def run_analysis(self) -> None:

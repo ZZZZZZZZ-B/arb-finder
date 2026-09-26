@@ -13,7 +13,7 @@ from promo_hedge_tool.odds_client.models import OddsQuote
 from promo_hedge_tool.odds_client.sport_key_resolver import SportKeyResolver
 from promo_hedge_tool.odds_cache import odds_cache
 from promo_hedge_tool.ranker import rank_top_n
-from promo_hedge_tool.run_context import RunContext
+from promo_hedge_tool.run_context import RunContext, api_bookmaker_key, normalize_bookmaker_quotes
 from promo_hedge_tool.strategies.base import HedgeResult
 from promo_hedge_tool.strategies.bonus_bet_snr import BonusBetSNRStrategy
 from promo_hedge_tool.strategies.profit_boost import ProfitBoostStrategy
@@ -130,7 +130,8 @@ def execute(
         odds_cache.clear()
         api_keys = resolve_api_keys(config.odds_api.api_key_envs)
         client = OddsAPIClient(KeyPool(api_keys))
-        bookmakers = [context.base_bookmaker, *context.hedge_bookmakers]
+        platform_names = [context.base_bookmaker, *context.hedge_bookmakers]
+        bookmakers = [api_bookmaker_key(config, name) for name in platform_names]
         all_quotes: list[OddsQuote] = []
         if context.period == "full-game":
             resolver = SportKeyResolver(client)
@@ -141,7 +142,7 @@ def execute(
             for _logical_name, keys in sport_keys.items():
                 for sport_key in keys:
                     try:
-                        all_quotes.extend(client.get_odds(
+                        quotes = client.get_odds(
                             sport_key,
                             bookmakers,
                             ["h2h", "spreads", "totals"],
@@ -149,7 +150,8 @@ def execute(
                             end,
                             odds_format=config.odds_api.odds_format,
                             date_format=config.odds_api.date_format,
-                        ))
+                        )
+                        all_quotes.extend(normalize_bookmaker_quotes(config, quotes))
                     except AllKeysExhaustedError:
                         raise
                     except OddsAPIError as exc:
@@ -171,7 +173,7 @@ def execute(
                         date_format=config.odds_api.date_format,
                     )
                     if quotes:
-                        all_quotes.extend(quotes)
+                        all_quotes.extend(normalize_bookmaker_quotes(config, quotes))
                     else:
                         skipped += 1
                 except AllKeysExhaustedError:

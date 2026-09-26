@@ -49,23 +49,26 @@ platforms:
     title: FanDuel
   proline:
     enabled: false
-    source: external_adapter
+    source: odds_api
     title: Proline+
+    bookmaker_key: proline_ca_on
   bet365:
     enabled: false
-    source: external_adapter
+    source: odds_api
     title: Bet365
+    bookmaker_key: bet365_au
   hardrock:
     enabled: false
-    source: external_adapter
+    source: odds_api
     title: Hard Rock Bet
+    bookmaker_key: hardrockbet
 
 odds_api:
   api_key_envs: [ODDS_API_KEYS]
   key_rotation_strategy: round_robin
   odds_format: decimal
   date_format: iso
-  bookmakers: [draftkings, fanduel]
+  bookmakers: [draftkings, fanduel, proline_ca_on, bet365_au, hardrockbet]
 
 output:
   formats: [csv, json]
