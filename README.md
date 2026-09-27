@@ -1,138 +1,76 @@
-# Promotion Hedge Arbitrage Tool
+# Promotion Hedge Analyzer
 
-![Promotion Hedge Arbitrage Tool banner](config/background.jpg)
-
-A Python tool for analyzing sports betting promotions with The Odds API. It supports Bonus Bet SNR and Profit Boost calculations, live event discovery, bookmaker selection, and two-sided hedge analysis.
+Analyze sportsbook promotions against odds from The Odds API. The desktop app supports Bonus Bet and Profit Boost calculations, event discovery, bookmaker selection, and two-sided hedge results.
 
 ## Features
 
-- Select DraftKings, FanDuel, or another configured bookmaker as the base platform.
-- Use all other configured platforms as hedge candidates.
-- Calculate Bonus Bet SNR hedge opportunities.
-- Calculate Profit Boost opportunities with a custom cash stake and boost percentage.
-- Support Moneyline, Spread, and Totals binary markets.
-- Filter by league, time window, event, or team keyword.
-- Query live events and odds through The Odds API.
-- Rotate across multiple API keys and skip exhausted keys.
-- Rank the top 10 opportunities by conversion rate or locked profit.
-- Export timestamped CSV and JSON result files.
-- Open detailed bet instructions by double-clicking a result row.
+- Bonus Bet SNR and Profit Boost calculations.
+- Full-game moneyline, spread, and totals analysis.
+- Configured period markets, including MLB first-inning run line and total runs.
+- Event lookup by league and local date range, with optional team keyword filtering.
+- Select a base bookmaker and one or more hedge bookmakers.
+- Multi-key rotation and a persistent SQLite odds cache.
+- CSV and JSON exports with bet selections, odds, stakes, returns, and profit details.
 
 ## Requirements
 
 - Python 3.10 or newer
 - A The Odds API key
-- Windows, macOS, or Linux
 
-## Installation
+## Install and Run
 
-Run these commands from the project root:
+From the project root:
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
-```
-
-If PowerShell blocks virtual environment activation, use the interpreter directly:
-
-```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-```
-
-## API Key Configuration
-
-Provide one or more API keys through a single environment variable. Separate multiple keys with commas, semicolons, or newlines. Do not store keys in YAML files or Git:
-
-```powershell
 $env:ODDS_API_KEYS = "your-first-api-key,your-second-api-key"
-```
-
-The default configuration reads `ODDS_API_KEYS`:
-
-```yaml
-odds_api:
-  api_key_envs: [ODDS_API_KEYS]
-  key_rotation_strategy: round_robin
-```
-
-## Usage
-
-### Graphical interface
-
-Start the GUI with:
-
-```powershell
 python -m promo_hedge_tool
 ```
 
-The interface lets you choose:
+On macOS or Linux, activate the environment with `source .venv/bin/activate` and set the key with `export ODDS_API_KEYS="your-api-key"`.
 
-1. Bonus Bet or Profit Boost mode;
-2. the base bookmaker;
-3. the cash stake and boost percentage;
-4. the league and time window;
-5. specific events or a team keyword returned by the API.
+The application reads API keys from the environment variable named in `odds_api.api_key_envs`. Multiple keys may be separated by commas, semicolons, or newlines. Do not put API keys in configuration files or commit them to Git.
 
-After event selection, the tool retrieves odds, calculates hedge opportunities, and writes results to `output/`. Double-click a result to view the exact base and hedge selections, point values, odds, stakes, potential returns, total cash staked, locked profit, and conversion rate.
+## Using the App
 
-### Direct CLI
+1. Choose Bonus Bet or Profit Boost, the base bookmaker, and the promotion values.
+2. Select a league and local start/end dates. Optionally enter a team keyword.
+3. Click **Find Events** and select one or more events. Leave events unselected for full-game analysis across the selected league and date range.
+4. Choose hedge bookmakers. The `enabled` setting in the platform configuration determines which hedge options are checked by default.
+5. Keep **Fetch latest Odds API data** checked to fetch odds and replace the local cache. Uncheck it to recalculate from cached odds without making odds requests.
+6. Click **Run Analysis**. Double-click a result for its bet selections and stake details.
 
-For a configuration-driven run without the GUI:
+Period markets require selecting specific events and at least one market. The configured MLB first-inning markets are **Run Line** and **Total Runs**.
 
-```powershell
-python -m promo_hedge_tool.main
-```
+## Configuration
 
-The CLI uses the sports, bookmakers, event window, and promotion settings from `config/config.yaml`.
+Edit `config/config.yaml` to configure sports, display titles, periods, bookmakers, and output settings.
 
-## Configuration Files
+- Sports use `sport_key` for a fixed league or `dynamic_prefix` for a group of event-specific keys. `title` controls the league name shown in the UI.
+- Platforms use `title`, `enabled`, and `source`. For The Odds API platforms, set `source: odds_api`; use `bookmaker_key` when the API key differs from the platform name.
+- `periods` maps UI market names and titles to The Odds API market keys.
+- The Odds API bookmaker keys include regional variants. For example, PROLINE is `proline_ca_on`, Bet365 AU is `bet365_au`, and Hard Rock Bet is `hardrockbet`. Set the bookmaker key supported by your account and region.
 
-- `config/config.yaml`: active application configuration for the GUI and CLI.
-- `config/background.jpg`: GUI banner image.
+Available sports, bookmakers, and markets depend on The Odds API coverage and subscription. Some bookmaker or sport combinations may return no odds. Bet365 AU currently has limited coverage and requires a paid subscription.
 
-The application reads `config/config.yaml` by default. Adjust `platforms`, `sports`, `promo`, and `odds_api.bookmakers` to match the bookmakers and sports available to your API account. Soccer requests use the API-supported `h2h` market and remove the `Draw` outcome locally.
+## Output and Cache
 
-## Output
-
-Results are written to:
-
-```text
-output/hedge_results_<timestamp>.csv
-output/hedge_results_<timestamp>.json
-```
-
-Results include the exact base and hedge selections, point values such as `Over 36.5`, odds, stakes, potential returns, total cash staked, locked profit, and conversion rate. In the GUI, double-click a result row to open the full bet details.
-
-## Logging
-
-The CLI and GUI write application logs to the project root:
+Results are saved under `output/`:
 
 ```text
-arb_finder.log
+hedge_results_<timestamp>.csv
+hedge_results_<timestamp>.json
+odds_cache.sqlite3
 ```
 
-Log files and all generated files under `output/` are excluded from Git.
+Fetching latest odds replaces the cached snapshot. Cached analysis reuses that snapshot and applies the current selections and promotion inputs.
 
-## Testing
+## Tests
 
 ```powershell
-python -m pytest tests
+python -m pytest -q
 ```
 
-The test suite covers:
-
-- Bonus Bet SNR calculations;
-- Profit Boost calculations, including negative-profit results;
-- API key rotation;
-- binary market filtering and matchup construction;
-- dynamic base and hedge bookmaker roles;
-- team keyword filtering and run-context validation.
-
-## Notes and Limitations
-
-- Available bookmakers and Soccer sport keys may vary by API account and season. Verify them against the live API response.
-- A configured bookmaker without an Odds API source or external adapter may be listed but cannot provide odds at runtime.
-- Available markets and bookmaker coverage depend on the API account and sport. The application logs API responses, quota headers, event counts, and quote counts to `arb_finder.log`.
-- Profit Boost rules can vary by bookmaker. The current implementation uses one unified strict-locking model.
-- This tool provides calculations only. It does not place bets or provide betting advice.
+The tool performs calculations only; it does not place bets or provide betting advice.

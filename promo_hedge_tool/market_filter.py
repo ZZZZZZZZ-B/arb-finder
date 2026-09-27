@@ -14,9 +14,17 @@ SOCCER_BINARY_MARKET_KEYS = {"h2h", "spreads", "totals"}
 def market_family(market_key: str) -> str:
     if market_key == "h2h" or market_key.startswith("h2h_"):
         return "h2h"
-    if market_key == "spreads" or market_key.startswith("spreads_") or market_key.startswith("alternate_spreads_"):
+    if (
+        market_key in ("spreads", "alternate_spreads")
+        or market_key.startswith("spreads_")
+        or market_key.startswith("alternate_spreads_")
+    ):
         return "spreads"
-    if market_key == "totals" or market_key.startswith("totals_") or market_key.startswith("alternate_totals_"):
+    if (
+        market_key in ("totals", "alternate_totals")
+        or market_key.startswith("totals_")
+        or market_key.startswith("alternate_totals_")
+    ):
         return "totals"
     return market_key
 

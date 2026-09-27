@@ -16,7 +16,13 @@ if __package__ in (None, ""):
         sys.path.insert(0, str(project_root))
 
 from promo_hedge_tool.config import Config, load_config, resolve_api_keys
-from promo_hedge_tool.engine import execute
+from promo_hedge_tool.cost_estimator import (
+    estimate_alt_market_cost_for_events,
+    estimate_core_market_cost,
+    estimate_run_cost,
+    get_credit_thresholds,
+)
+from promo_hedge_tool.engine import execute, finalize_core_only, run_alt_phase, run_core_phase, select_prefilter_event_sports
 from promo_hedge_tool.event_selection import event_name, filter_events, local_event_time, local_timezone_label
 from promo_hedge_tool.logging_config import configure_logging
 from promo_hedge_tool.odds_client.client import OddsAPIClient
@@ -118,9 +124,10 @@ class HedgeApp(tk.Tk):
     def _build_form(self) -> None:
         body = ttk.Frame(self, padding=18)
         body.pack(fill="both", expand=True)
-        body.columnconfigure(1, weight=1)
-        body.rowconfigure(14, weight=1)
-        body.rowconfigure(17, weight=1)
+        body.columnconfigure(0, weight=1, uniform="form_col")
+        body.columnconfigure(1, weight=1, uniform="form_col")
+        body.rowconfigure(3, weight=1)
+        body.rowconfigure(6, weight=1)
 
         self.mode = tk.StringVar(value="profit-boost")
         self.period = tk.StringVar(value="full-game")
@@ -138,80 +145,100 @@ class HedgeApp(tk.Tk):
         self.market_vars: dict[str, tk.BooleanVar] = {}
         self.status = tk.StringVar(value="Set the query range, then click 'Find Events'.")
 
+        # Required fields on the left, optional fields on the right, side by side to use the full width.
+        # Plain frames only -- purely a layout aid, no visible border or heading.
+        required_frame = ttk.Frame(body)
+        optional_frame = ttk.Frame(body)
+        required_frame.grid(row=0, column=0, sticky="new", padx=(0, 8))
+        optional_frame.grid(row=0, column=1, sticky="new", padx=(8, 0))
+        required_frame.columnconfigure(1, weight=1)
+        optional_frame.columnconfigure(1, weight=1)
+
         local_now = datetime.now().astimezone()
         default_start = local_now.date()
         default_end = (local_now + timedelta(hours=self.config_data.event_window_hours)).date()
-        start_date = StableDateEntry(body, date_pattern="mm/dd/yyyy", textvariable=tk.StringVar(), width=18)
-        end_date = StableDateEntry(body, date_pattern="mm/dd/yyyy", textvariable=tk.StringVar(), width=18)
+        start_date = StableDateEntry(required_frame, date_pattern="mm/dd/yyyy", textvariable=tk.StringVar(), width=18)
+        end_date = StableDateEntry(required_frame, date_pattern="mm/dd/yyyy", textvariable=tk.StringVar(), width=18)
         start_date.set_date(default_start)
         end_date.set_date(default_end)
         self.from_date = start_date
         self.to_date = end_date
 
-        fields = [
-            ("Mode *", ttk.Combobox(body, textvariable=self.mode, values=["bonus-bet", "profit-boost"], state="readonly")),
-            ("Period *", ttk.Combobox(body, textvariable=self.period, values=self._period_values(), state="readonly")),
-            ("Base bookmaker *", ttk.Combobox(body, textvariable=self.base, values=configured_bookmakers(self.config_data), state="readonly")),
-            ("Cash stake / Bonus amount *", ttk.Entry(body, textvariable=self.stake)),
-            ("Boost percentage *", ttk.Entry(body, textvariable=self.boost)),
-            ("Base odds operator (optional)", ttk.Combobox(body, textvariable=self.odds_operator, values=["Any", ">=", "<="], state="readonly")),
-            ("American odds value (optional)", ttk.Entry(body, textvariable=self.odds_requirement)),
-            ("League (optional)", ttk.Combobox(body, textvariable=self.league, values=["All"] + self._league_names(), state="readonly")),
+        base_widget = ttk.Combobox(required_frame, textvariable=self.base, values=configured_bookmakers(self.config_data), state="readonly")
+        self.league_widget = ttk.Combobox(optional_frame, textvariable=self.league, values=["All"] + self._league_names(), state="readonly")
+        required_fields = [
+            ("Mode *", ttk.Combobox(required_frame, textvariable=self.mode, values=["bonus-bet", "profit-boost"], state="readonly")),
+            ("Period *", ttk.Combobox(required_frame, textvariable=self.period, values=self._period_values(), state="readonly")),
+            ("Base bookmaker *", base_widget),
+            ("Cash stake / Bonus amount *", ttk.Entry(required_frame, textvariable=self.stake)),
+            ("Boost percentage *", ttk.Entry(required_frame, textvariable=self.boost)),
             ("Start date *", start_date),
             ("End date *", end_date),
-            ("Team keyword (optional)", ttk.Entry(body, textvariable=self.keyword)),
         ]
-        for row, (title, widget) in enumerate(fields):
-            ttk.Label(body, text=title).grid(row=row, column=0, sticky="w", padx=(0, 12), pady=5)
+        optional_fields = [
+            ("Base odds operator (optional)", ttk.Combobox(optional_frame, textvariable=self.odds_operator, values=["Any", ">=", "<="], state="readonly")),
+            ("American odds value (optional)", ttk.Entry(optional_frame, textvariable=self.odds_requirement)),
+            ("League (optional)", self.league_widget),
+            ("Team keyword (optional)", ttk.Entry(optional_frame, textvariable=self.keyword)),
+        ]
+        for row, (title, widget) in enumerate(required_fields):
+            ttk.Label(required_frame, text=title).grid(row=row, column=0, sticky="w", padx=(0, 12), pady=5)
+            widget.grid(row=row, column=1, sticky="ew", pady=5)
+        for row, (title, widget) in enumerate(optional_fields):
+            ttk.Label(optional_frame, text=title).grid(row=row, column=0, sticky="w", padx=(0, 12), pady=5)
             widget.grid(row=row, column=1, sticky="ew", pady=5)
 
-        self.league_widget = fields[7][1]
-
-        base_widget = fields[2][1]
         base_widget.bind("<<ComboboxSelected>>", lambda _event: (self._refresh_hedge_selection(), self._refresh_run_button()))
         self.mode.trace_add("write", lambda *_args: self._on_mode_changed())
         self.period.trace_add("write", lambda *_args: self._on_period_changed())
         for variable in (self.base, self.stake, self.boost, self.odds_operator, self.odds_requirement):
             variable.trace_add("write", lambda *_args: self._refresh_run_button())
 
-        ttk.Label(body, text="Markets").grid(row=12, column=0, sticky="nw", padx=(0, 12), pady=5)
-        self.market_frame = ttk.Frame(body)
-        self.market_frame.grid(row=12, column=1, sticky="ew", pady=5)
-        self._refresh_market_selection()
-
-        ttk.Label(body, text="Hedge bookmakers").grid(row=13, column=0, sticky="nw", padx=(0, 12), pady=5)
-        hedge_frame = ttk.Frame(body)
-        hedge_frame.grid(row=13, column=1, sticky="ew", pady=5)
+        ttk.Label(required_frame, text="Hedge bookmakers").grid(row=len(required_fields), column=0, sticky="nw", padx=(0, 12), pady=5)
+        hedge_frame = ttk.Frame(required_frame)
+        hedge_frame.grid(row=len(required_fields), column=1, sticky="ew", pady=5)
         self.hedge_frame = hedge_frame
         self._refresh_hedge_selection()
 
-        ttk.Label(body, text="Event selection").grid(row=14, column=0, sticky="nw", padx=(0, 12), pady=5)
-        self.event_list = ttk.Treeview(body, columns=("event", "local_time"), show="headings", selectmode="extended", height=8)
+        ttk.Label(optional_frame, text="Alt Markets").grid(row=len(optional_fields), column=0, sticky="nw", padx=(0, 12), pady=5)
+        self.market_frame = ttk.Frame(optional_frame)
+        self.market_frame.grid(row=len(optional_fields), column=1, sticky="ew", pady=5)
+        self._refresh_market_selection()
+
+        ttk.Checkbutton(
+            optional_frame,
+            text="Fetch latest Odds API data",
+            variable=self.fetch_latest,
+        ).grid(row=len(optional_fields) + 1, column=0, columnspan=2, sticky="w", pady=5)
+
+        ttk.Label(body, text="Event selection").grid(row=1, column=0, columnspan=2, sticky="nw", pady=(12, 0))
+        event_frame = ttk.Frame(body)
+        event_frame.grid(row=2, column=0, columnspan=2, sticky="nsew")
+        event_frame.columnconfigure(0, weight=1)
+        self.event_list = ttk.Treeview(event_frame, columns=("event", "local_time"), show="headings", selectmode="extended", height=8)
         self.event_list.heading("event", text="Event")
         self.event_list.heading("local_time", text=f"Local start time ({local_timezone_label()})")
         self.event_list.column("event", anchor="w", width=360)
         self.event_list.column("local_time", anchor="w", width=220)
-        self.event_list.grid(row=14, column=1, sticky="nsew", pady=5)
-        scrollbar = ttk.Scrollbar(body, orient="vertical", command=self.event_list.yview)
-        scrollbar.grid(row=14, column=2, sticky="ns", pady=5)
+        self.event_list.grid(row=0, column=0, sticky="nsew", pady=5)
+        scrollbar = ttk.Scrollbar(event_frame, orient="vertical", command=self.event_list.yview)
+        scrollbar.grid(row=0, column=1, sticky="ns", pady=5)
         self.event_list.configure(yscrollcommand=scrollbar.set)
         self.event_list.bind("<<TreeviewSelect>>", lambda _event: self._refresh_run_button())
 
-        ttk.Label(body, textvariable=self.status).grid(row=15, column=0, columnspan=3, sticky="w", pady=(8, 4))
+        ttk.Label(body, textvariable=self.status).grid(row=3, column=0, columnspan=2, sticky="w", pady=(8, 4))
         actions = ttk.Frame(body)
-        actions.grid(row=16, column=0, columnspan=3, sticky="e")
-        ttk.Checkbutton(
-            body,
-            text="Fetch latest Odds API data",
-            variable=self.fetch_latest,
-        ).grid(row=16, column=0, sticky="w", pady=5)
+        actions.grid(row=4, column=0, columnspan=2, sticky="e")
         ttk.Button(actions, text="Find Events", command=self.query_events).pack(side="left", padx=4)
         self.run_button = ttk.Button(actions, text="Run Analysis", command=self.run_analysis)
         self.run_button.pack(side="left", padx=4)
 
-        ttk.Label(body, text="Top 3 results by locked profit").grid(row=17, column=0, sticky="nw", padx=(0, 12), pady=5)
+        ttk.Label(body, text="Top 10 results by locked profit").grid(row=5, column=0, columnspan=2, sticky="nw", pady=(12, 0))
+        result_frame = ttk.Frame(body)
+        result_frame.grid(row=6, column=0, columnspan=2, sticky="nsew")
+        result_frame.columnconfigure(0, weight=1)
         self.result_list = ttk.Treeview(
-            body,
+            result_frame,
             columns=("event", "market", "base", "hedge", "profit"),
             show="headings",
             height=5,
@@ -230,7 +257,10 @@ class HedgeApp(tk.Tk):
         self.result_list.column("base", anchor="w", width=110)
         self.result_list.column("hedge", anchor="w", width=110)
         self.result_list.column("profit", anchor="e", width=150, minwidth=140, stretch=False)
-        self.result_list.grid(row=17, column=1, sticky="nsew", pady=5)
+        self.result_list.grid(row=0, column=0, sticky="nsew", pady=5)
+        result_scrollbar = ttk.Scrollbar(result_frame, orient="vertical", command=self.result_list.yview)
+        result_scrollbar.grid(row=0, column=1, sticky="ns", pady=5)
+        self.result_list.configure(yscrollcommand=result_scrollbar.set)
         self.result_list.bind("<Double-1>", self._show_selected_result)
         self._on_mode_changed()
 
@@ -263,7 +293,16 @@ class HedgeApp(tk.Tk):
             child.destroy()
         self.market_vars = {}
         if self.period.get() == "full-game":
-            ttk.Label(self.market_frame, text="Full game markets are used.").pack(anchor="w")
+            optional_markets = self.config_data.full_game_markets.get("optional_markets", {})
+            for name, market in optional_markets.items():
+                selected = tk.BooleanVar(value=False)
+                self.market_vars[name] = selected
+                ttk.Checkbutton(
+                    self.market_frame,
+                    text=market.get("title", name),
+                    variable=selected,
+                    command=self._refresh_run_button,
+                ).pack(anchor="w")
             return
         definition = self.config_data.periods.get(self.period.get(), {})
         for name, market in definition.get("markets", {}).items():
@@ -310,10 +349,12 @@ class HedgeApp(tk.Tk):
         self._refresh_run_button()
 
     def _set_field_state(self, variable: tk.StringVar, enabled: bool) -> None:
-        for child in self.winfo_children():
-            for widget in child.winfo_children():
-                if isinstance(widget, ttk.Entry) and str(widget.cget("textvariable")) == str(variable):
-                    widget.configure(state="normal" if enabled else "disabled")
+        stack = list(self.winfo_children())
+        while stack:
+            widget = stack.pop()
+            if isinstance(widget, ttk.Entry) and str(widget.cget("textvariable")) == str(variable):
+                widget.configure(state="normal" if enabled else "disabled")
+            stack.extend(widget.winfo_children())
 
     def _validate_form(self) -> str | None:
         if not self.base.get() or not self.mode.get():
@@ -496,20 +537,177 @@ class HedgeApp(tk.Tk):
                 period=self.period.get(),
                 selected_markets=selected_markets,
             )
-            self.status.set("Fetching odds and calculating results...")
-            threading.Thread(target=self._run_analysis_worker, args=(context, self.fetch_latest.get()), daemon=True).start()
+            if not self.fetch_latest.get():
+                self._launch_analysis(context, False)
+                return
+            if self.period.get() == "full-game" and selected_markets and not specific_items:
+                self.status.set("Estimating core market API credit usage...")
+                threading.Thread(target=self._estimate_core_cost_worker, args=(context,), daemon=True).start()
+                return
+            self.status.set("Estimating API credit usage...")
+            threading.Thread(target=self._estimate_cost_worker, args=(context,), daemon=True).start()
         except (ValueError, KeyError) as exc:
             messagebox.showerror("Run Parameter Error", str(exc))
+
+    def _estimate_cost_worker(self, context) -> None:
+        try:
+            api_keys = resolve_api_keys(self.config_data.odds_api.api_key_envs)
+            client = OddsAPIClient(KeyPool(api_keys))
+            estimate = estimate_run_cost(self.config_data, context, client)
+            self.after(0, self._handle_cost_estimate, context, estimate)
+        except Exception as exc:  # pragma: no cover - network/UI boundary
+            self.after(0, lambda: messagebox.showerror("Cost Estimate Failed", str(exc)))
+            self.after(0, lambda: self.status.set("Cost estimate failed. Check the API key and query range."))
+
+    def _handle_cost_estimate(self, context, estimate) -> None:
+        _, alt_threshold = get_credit_thresholds(self.config_data)
+        if estimate.total <= alt_threshold:
+            self._launch_analysis(context, True)
+            return
+        self._show_cost_confirmation(context, estimate)
+
+    def _show_cost_confirmation(self, context, estimate) -> None:
+        self.status.set(f"Estimated usage is {estimate.total} API credits. Awaiting confirmation.")
+        self._build_confirmation_dialog(
+            title="Confirm API Credit Usage",
+            headline=f"This run is estimated to use approximately {estimate.total} API credits.",
+            lines=estimate.lines,
+            on_confirm=lambda: self._launch_analysis(context, True),
+            on_cancel=lambda: self.status.set("Run cancelled before using API credits."),
+        )
+
+    def _build_confirmation_dialog(self, title: str, headline: str, lines: list[str], on_confirm, on_cancel) -> None:
+        dialog = tk.Toplevel(self)
+        dialog.title(title)
+        dialog.transient(self)
+        dialog.grab_set()
+        body = ttk.Frame(dialog, padding=16)
+        body.pack(fill="both", expand=True)
+        ttk.Label(body, text=headline, font=("TkDefaultFont", 10, "bold"), wraplength=420).pack(anchor="w", pady=(0, 8))
+        for line in lines:
+            ttk.Label(body, text=f"- {line}", wraplength=420).pack(anchor="w")
+        ttk.Label(body, text="Continue with this API call?", wraplength=420).pack(anchor="w", pady=(8, 0))
+        actions = ttk.Frame(body)
+        actions.pack(anchor="e", pady=(12, 0))
+
+        def confirm() -> None:
+            dialog.destroy()
+            on_confirm()
+
+        def cancel() -> None:
+            dialog.destroy()
+            on_cancel()
+
+        ttk.Button(actions, text="Cancel", command=cancel).pack(side="left", padx=4)
+        ttk.Button(actions, text="Confirm", command=confirm).pack(side="left", padx=4)
+        dialog.protocol("WM_DELETE_WINDOW", cancel)
+
+    def _launch_analysis(self, context, fetch_latest: bool) -> None:
+        self.status.set("Fetching odds and calculating results...")
+        threading.Thread(target=self._run_analysis_worker, args=(context, fetch_latest), daemon=True).start()
 
     def _run_analysis_worker(self, context, fetch_latest: bool) -> None:
         try:
             results = execute(self.config_data, context, fetch_latest=fetch_latest)
-            top_results = sorted(results, key=lambda result: result.locked_profit, reverse=True)[:3]
-            self.after(0, self._show_results, top_results)
-            self.after(0, lambda: self.status.set(f"Analysis complete. Generated {len(results)} results in output."))
+            self.after(0, self._handle_final_results, results)
         except Exception as exc:  # pragma: no cover - network/UI boundary
             self.after(0, lambda: messagebox.showerror("Analysis Failed", str(exc)))
             self.after(0, lambda: self.status.set("Analysis failed. Check the platform data sources and API quota."))
+
+    # -- Two-stage flow: core full-game markets first, then a prefiltered alt-market pass --
+
+    def _estimate_core_cost_worker(self, context) -> None:
+        try:
+            api_keys = resolve_api_keys(self.config_data.odds_api.api_key_envs)
+            client = OddsAPIClient(KeyPool(api_keys))
+            estimate = estimate_core_market_cost(self.config_data, context, client)
+            self.after(0, self._handle_core_cost_estimate, context, estimate)
+        except Exception as exc:  # pragma: no cover - network/UI boundary
+            self.after(0, lambda: messagebox.showerror("Cost Estimate Failed", str(exc)))
+            self.after(0, lambda: self.status.set("Cost estimate failed. Check the API key and query range."))
+
+    def _handle_core_cost_estimate(self, context, estimate) -> None:
+        core_threshold, _ = get_credit_thresholds(self.config_data)
+        if estimate.total <= core_threshold:
+            self._launch_core_phase(context)
+            return
+        self._show_core_cost_confirmation(context, estimate)
+
+    def _show_core_cost_confirmation(self, context, estimate) -> None:
+        self.status.set(f"Estimated core market usage is {estimate.total} API credits. Awaiting confirmation.")
+        self._build_confirmation_dialog(
+            title="Confirm Core Market API Usage",
+            headline=f"The core market query is estimated to use approximately {estimate.total} API credits.",
+            lines=estimate.lines,
+            on_confirm=lambda: self._launch_core_phase(context),
+            on_cancel=lambda: self.status.set("Run cancelled before using API credits."),
+        )
+
+    def _launch_core_phase(self, context) -> None:
+        self.status.set("Fetching core market odds...")
+        threading.Thread(target=self._run_core_phase_worker, args=(context,), daemon=True).start()
+
+    def _run_core_phase_worker(self, context) -> None:
+        try:
+            core_phase = run_core_phase(self.config_data, context)
+            self.after(0, self._after_core_phase, context, core_phase)
+        except Exception as exc:  # pragma: no cover - network/UI boundary
+            self.after(0, lambda: messagebox.showerror("Analysis Failed", str(exc)))
+            self.after(0, lambda: self.status.set("Analysis failed. Check the platform data sources and API quota."))
+
+    def _after_core_phase(self, context, core_phase) -> None:
+        event_sports = select_prefilter_event_sports(self.config_data, context, core_phase.core_results)
+        if not event_sports:
+            self.status.set("No profitable core-market events found; alternate markets skipped.")
+            self._launch_core_only_finalize(context, core_phase)
+            return
+        estimate = estimate_alt_market_cost_for_events(self.config_data, context, event_sports)
+        _, alt_threshold = get_credit_thresholds(self.config_data)
+        if estimate.total <= alt_threshold:
+            self._launch_alt_phase(context, core_phase, event_sports)
+            return
+        self._show_alt_cost_confirmation(context, core_phase, event_sports, estimate)
+
+    def _show_alt_cost_confirmation(self, context, core_phase, event_sports, estimate) -> None:
+        self.status.set(f"Estimated alternate market usage is {estimate.total} API credits. Awaiting confirmation.")
+        self._build_confirmation_dialog(
+            title="Confirm Alternate Market API Usage",
+            headline=(
+                f"The alternate market query on {len(event_sports)} profitable event(s) is estimated to use "
+                f"approximately {estimate.total} API credits."
+            ),
+            lines=estimate.lines,
+            on_confirm=lambda: self._launch_alt_phase(context, core_phase, event_sports),
+            on_cancel=lambda: self._launch_core_only_finalize(context, core_phase),
+        )
+
+    def _launch_alt_phase(self, context, core_phase, event_sports) -> None:
+        self.status.set("Fetching alternate market odds...")
+        threading.Thread(target=self._run_alt_phase_worker, args=(context, core_phase, event_sports), daemon=True).start()
+
+    def _run_alt_phase_worker(self, context, core_phase, event_sports) -> None:
+        try:
+            results = run_alt_phase(self.config_data, context, core_phase, event_sports)
+            self.after(0, self._handle_final_results, results)
+        except Exception as exc:  # pragma: no cover - network/UI boundary
+            self.after(0, lambda: messagebox.showerror("Analysis Failed", str(exc)))
+            self.after(0, lambda: self.status.set("Analysis failed. Check the platform data sources and API quota."))
+
+    def _launch_core_only_finalize(self, context, core_phase) -> None:
+        threading.Thread(target=self._finalize_core_only_worker, args=(context, core_phase), daemon=True).start()
+
+    def _finalize_core_only_worker(self, context, core_phase) -> None:
+        try:
+            results = finalize_core_only(self.config_data, context, core_phase)
+            self.after(0, self._handle_final_results, results)
+        except Exception as exc:  # pragma: no cover - network/UI boundary
+            self.after(0, lambda: messagebox.showerror("Analysis Failed", str(exc)))
+            self.after(0, lambda: self.status.set("Analysis failed. Check the platform data sources and API quota."))
+
+    def _handle_final_results(self, results) -> None:
+        top_results = sorted(results, key=lambda result: result.locked_profit, reverse=True)[:10]
+        self._show_results(top_results)
+        self.status.set(f"Analysis complete. Generated {len(results)} results in output.")
 
     def _show_results(self, results) -> None:
         self.displayed_results = list(results)

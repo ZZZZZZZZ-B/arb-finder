@@ -35,6 +35,7 @@ class Config:
     selection: dict[str, Any] = field(default_factory=dict)
     output: dict[str, Any] = field(default_factory=dict)
     periods: dict[str, Any] = field(default_factory=dict)
+    full_game_markets: dict[str, Any] = field(default_factory=dict)
 
 
 def load_config(path: str | Path) -> Config:
@@ -63,6 +64,7 @@ def load_config(path: str | Path) -> Config:
         selection=dict(raw.get("selection", {})),
         output=dict(raw.get("output", {})),
         periods=dict(raw.get("periods", {})),
+        full_game_markets=dict(raw.get("full_game", {})),
     )
 
 

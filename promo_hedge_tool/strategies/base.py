@@ -36,9 +36,9 @@ class HedgeResult:
 
 def describe_quote(quote: OddsQuote) -> str:
     selection = quote.outcome_name
-    if (quote.market_key == "totals" or quote.market_key.startswith("totals_")) and quote.point is not None:
+    if (quote.market_key in ("totals", "alternate_totals") or quote.market_key.startswith("totals_")) and quote.point is not None:
         return f"{selection} {quote.point:g}"
-    if (quote.market_key == "spreads" or quote.market_key.startswith("spreads_")) and quote.point is not None:
+    if (quote.market_key in ("spreads", "alternate_spreads") or quote.market_key.startswith("spreads_")) and quote.point is not None:
         return f"{selection} {quote.point:+g}"
     return selection
 
@@ -48,6 +48,8 @@ def describe_market(market_key: str) -> str:
         "h2h": "Moneyline",
         "spreads": "Spread",
         "totals": "Total",
+        "alternate_spreads": "Alternate Spread",
+        "alternate_totals": "Alternate Total",
         "spreads_1st_1_innings": "1st inning Run Line",
         "totals_1st_1_innings": "1st inning Total Runs",
     }

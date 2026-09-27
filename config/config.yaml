@@ -26,6 +26,23 @@ sports:
 
 top_n: 10
 
+full_game:
+  core_markets: [h2h, spreads, totals]
+  alt_market_prefilter:
+    top_n: 20
+  credit_thresholds:
+    core_market: 20
+    alt_market: 50
+  optional_markets:
+    alternate_spreads:
+      title: Alternate Spread
+      market_key: alternate_spreads
+      sport_keys: [basketball_nba, basketball_wnba, icehockey_nhl, baseball_mlb, americanfootball_nfl, americanfootball_ncaaf]
+    alternate_totals:
+      title: Alternate Total
+      market_key: alternate_totals
+      sport_keys: [basketball_nba, basketball_wnba, icehockey_nhl, baseball_mlb, americanfootball_nfl, americanfootball_ncaaf]
+
 periods:
   first_inning:
     title: 1st Inning

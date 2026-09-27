@@ -1,4 +1,4 @@
-from promo_hedge_tool.market_filter import build_matchups, filter_binary_quotes, is_binary_market, quotes_are_compatible
+from promo_hedge_tool.market_filter import build_matchups, filter_binary_quotes, is_binary_market, market_family, quotes_are_compatible
 from promo_hedge_tool.odds_client.models import OddsQuote
 
 
@@ -83,3 +83,26 @@ def test_build_matchups_orders_outcomes_by_name_not_api_order():
     matchups = build_matchups(quotes)
     assert matchups[0].quotes_by_bookmaker["draftkings"][0].outcome_name == "Under"
     assert matchups[0].quotes_by_bookmaker["fanduel"][0].outcome_name == "Under"
+
+
+def test_market_family_recognizes_bare_alternate_markets():
+    assert market_family("alternate_spreads") == "spreads"
+    assert market_family("alternate_totals") == "totals"
+
+
+def test_alternate_spreads_require_opposite_points():
+    first = make_quote("draftkings", "alternate_spreads", "Team A", 2.0, -2.5)
+    second = make_quote("draftkings", "alternate_spreads", "Team B", 1.9, 2.5)
+    same_direction = make_quote("draftkings", "alternate_spreads", "Team B", 1.9, -2.5)
+
+    assert quotes_are_compatible(first, second) is True
+    assert quotes_are_compatible(first, same_direction) is False
+
+
+def test_alternate_totals_require_over_and_under_at_same_point():
+    over = make_quote("draftkings", "alternate_totals", "Over", 2.0, 8.5)
+    under = make_quote("draftkings", "alternate_totals", "Under", 1.9, 8.5)
+
+    assert quotes_are_compatible(over, under) is True
+    assert is_binary_market("alternate_spreads", False) is True
+    assert is_binary_market("alternate_totals", False) is True
