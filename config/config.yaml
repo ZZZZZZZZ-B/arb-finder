@@ -3,6 +3,9 @@ profit_boost:
   default_boost_percent: null
   allow_negative_profit: true
 
+no_sweat:
+  bonus_value_ratio: 0.7
+
 selection:
   event_discovery: true
   keyword_match_case_insensitive: true

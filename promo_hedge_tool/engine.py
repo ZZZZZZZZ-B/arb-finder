@@ -18,6 +18,7 @@ from promo_hedge_tool.ranker import rank_top_n
 from promo_hedge_tool.run_context import RunContext, api_bookmaker_key, normalize_bookmaker_quotes
 from promo_hedge_tool.strategies.base import HedgeResult
 from promo_hedge_tool.strategies.bonus_bet_snr import BonusBetSNRStrategy
+from promo_hedge_tool.strategies.no_sweat import NoSweatStrategy
 from promo_hedge_tool.strategies.profit_boost import ProfitBoostStrategy
 
 
@@ -31,6 +32,13 @@ def build_strategy(config: Config, context: RunContext):
             odds_operator=context.odds_operator,
             odds_requirement_american=context.odds_requirement_american,
             primary_bookmaker=context.base_bookmaker,
+        )
+    if context.mode == "no-sweat":
+        return NoSweatStrategy(
+            float(context.stake),
+            float(config.no_sweat.get("bonus_value_ratio", 0.7)),
+            context.odds_operator,
+            context.odds_requirement_american,
         )
     return ProfitBoostStrategy(
         float(context.stake),
@@ -115,7 +123,7 @@ def _rank(
                 if result:
                     results.append(result)
 
-    return rank_top_n(results, config.top_n, key="locked_profit" if context.mode == "profit-boost" else "conversion_rate_pct")
+    return rank_top_n(results, config.top_n, key="conversion_rate_pct" if context.mode == "bonus-bet" else "locked_profit")
 
 
 def _export(
@@ -254,7 +262,7 @@ def select_prefilter_event_sports(
 ) -> tuple[tuple[str, str], ...]:
     """Ranks events by their best core-market result and keeps only the top N as alt-market candidates."""
     top_n = int(config.full_game_markets.get("alt_market_prefilter", {}).get("top_n", 20))
-    metric = "locked_profit" if context.mode == "profit-boost" else "conversion_rate_pct"
+    metric = "conversion_rate_pct" if context.mode == "bonus-bet" else "locked_profit"
     best_by_event: dict[str, HedgeResult] = {}
     for result in core_results:
         current = best_by_event.get(result.event_id)

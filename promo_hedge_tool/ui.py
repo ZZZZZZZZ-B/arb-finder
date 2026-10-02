@@ -167,7 +167,7 @@ class HedgeApp(tk.Tk):
         base_widget = ttk.Combobox(required_frame, textvariable=self.base, values=configured_bookmakers(self.config_data), state="readonly")
         self.league_widget = ttk.Combobox(optional_frame, textvariable=self.league, values=["All"] + self._league_names(), state="readonly")
         required_fields = [
-            ("Mode *", ttk.Combobox(required_frame, textvariable=self.mode, values=["bonus-bet", "profit-boost"], state="readonly")),
+            ("Mode *", ttk.Combobox(required_frame, textvariable=self.mode, values=["bonus-bet", "profit-boost", "no-sweat"], state="readonly")),
             ("Period *", ttk.Combobox(required_frame, textvariable=self.period, values=self._period_values(), state="readonly")),
             ("Base bookmaker *", base_widget),
             ("Cash stake / Bonus amount *", ttk.Entry(required_frame, textvariable=self.stake)),
@@ -344,8 +344,8 @@ class HedgeApp(tk.Tk):
             ).pack(anchor="w")
 
     def _on_mode_changed(self) -> None:
-        is_bonus_bet = self.mode.get() == "bonus-bet"
-        self._set_field_state(self.boost, not is_bonus_bet)
+        needs_boost = self.mode.get() == "profit-boost"
+        self._set_field_state(self.boost, needs_boost)
         self._refresh_run_button()
 
     def _set_field_state(self, variable: tk.StringVar, enabled: bool) -> None:
@@ -372,7 +372,7 @@ class HedgeApp(tk.Tk):
             amount = float(self.stake.get())
             if amount <= 0:
                 return "Cash stake or bonus amount must be greater than zero."
-            if self.mode.get() == "bonus-bet":
+            if self.mode.get() != "profit-boost":
                 if self.odds_operator.get() != "Any":
                     float(self.odds_requirement.get())
             else:
@@ -488,7 +488,7 @@ class HedgeApp(tk.Tk):
             validation_error = self._validate_form()
             if validation_error:
                 raise ValueError(validation_error)
-            stake = float(self.stake.get()) if self.mode.get() == "profit-boost" else None
+            stake = float(self.stake.get()) if self.mode.get() in {"profit-boost", "no-sweat"} else None
             bonus_amount = float(self.stake.get()) if self.mode.get() == "bonus-bet" else None
             boost = float(self.boost.get()) if self.mode.get() == "profit-boost" else None
             odds_operator = None if self.odds_operator.get() == "Any" else self.odds_operator.get()

@@ -32,6 +32,7 @@ class Config:
     platforms: dict[str, Any] = field(default_factory=dict)
     ui: UIConfig = field(default_factory=UIConfig)
     profit_boost: dict[str, Any] = field(default_factory=dict)
+    no_sweat: dict[str, Any] = field(default_factory=dict)
     selection: dict[str, Any] = field(default_factory=dict)
     output: dict[str, Any] = field(default_factory=dict)
     periods: dict[str, Any] = field(default_factory=dict)
@@ -61,6 +62,7 @@ def load_config(path: str | Path) -> Config:
             banner_height=int(ui.get("banner_height", 120)),
         ),
         profit_boost=dict(raw.get("profit_boost", {})),
+        no_sweat=dict(raw.get("no_sweat", {})),
         selection=dict(raw.get("selection", {})),
         output=dict(raw.get("output", {})),
         periods=dict(raw.get("periods", {})),

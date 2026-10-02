@@ -26,7 +26,7 @@ class RunContext:
     selected_markets: tuple[str, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
-        if self.mode not in {"bonus-bet", "profit-boost"}:
+        if self.mode not in {"bonus-bet", "profit-boost", "no-sweat"}:
             raise ValueError(f"Unsupported mode: {self.mode}")
         if not self.base_bookmaker:
             raise ValueError("base_bookmaker is required")
@@ -57,8 +57,13 @@ class RunContext:
                 raise ValueError("odds_operator must be >= or <=")
             if self.odds_operator is not None and self.odds_requirement_american is None:
                 raise ValueError("An American odds requirement is required when an operator is selected")
-        elif self.odds_operator is not None or self.odds_requirement_american is not None:
-            raise ValueError("Odds requirements are only supported in Profit Boost mode")
+        elif self.mode == "no-sweat":
+            if self.stake is None or self.stake <= 0:
+                raise ValueError("No Sweat stake must be greater than zero")
+            if self.odds_operator not in {None, ">=", "<="}:
+                raise ValueError("odds_operator must be >= or <=")
+            if self.odds_operator is not None and self.odds_requirement_american is None:
+                raise ValueError("An American odds requirement is required when an operator is selected")
 
 
 def configured_bookmakers(config) -> list[str]:
