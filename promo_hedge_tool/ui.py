@@ -4,7 +4,7 @@ import logging
 import sys
 import threading
 import tkinter as tk
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 from tkinter import messagebox, ttk
 
@@ -114,6 +114,8 @@ class HedgeApp(tk.Tk):
         self.minsize(900, 900)
         self.config_data = load_config(config_path)
         self.events: list[dict] = []
+        self.events_loaded = False
+        self.events_query_scope: tuple | None = None
         self.event_by_index: dict[int, dict] = {}
         self.hedge_vars: dict[str, tk.BooleanVar] = {}
         self.run_button: ttk.Button | None = None
@@ -157,8 +159,16 @@ class HedgeApp(tk.Tk):
         local_now = datetime.now().astimezone()
         default_start = local_now.date()
         default_end = (local_now + timedelta(hours=self.config_data.event_window_hours)).date()
-        start_date = StableDateEntry(required_frame, date_pattern="mm/dd/yyyy", textvariable=tk.StringVar(), width=18)
-        end_date = StableDateEntry(required_frame, date_pattern="mm/dd/yyyy", textvariable=tk.StringVar(), width=18)
+        self.start_hour = tk.StringVar(value="00")
+        self.start_minute = tk.StringVar(value="00")
+        self.end_hour = tk.StringVar(value="23")
+        self.end_minute = tk.StringVar(value="59")
+        start_input, start_date = self._build_datetime_input(
+            required_frame, self.start_hour, self.start_minute
+        )
+        end_input, end_date = self._build_datetime_input(
+            required_frame, self.end_hour, self.end_minute
+        )
         start_date.set_date(default_start)
         end_date.set_date(default_end)
         self.from_date = start_date
@@ -172,8 +182,8 @@ class HedgeApp(tk.Tk):
             ("Base bookmaker *", base_widget),
             ("Cash stake / Bonus amount *", ttk.Entry(required_frame, textvariable=self.stake)),
             ("Boost percentage *", ttk.Entry(required_frame, textvariable=self.boost)),
-            ("Start date *", start_date),
-            ("End date *", end_date),
+            ("Start date *", start_input),
+            ("End date *", end_input),
         ]
         optional_fields = [
             ("Base odds operator (optional)", ttk.Combobox(optional_frame, textvariable=self.odds_operator, values=["Any", ">=", "<="], state="readonly")),
@@ -287,6 +297,21 @@ class HedgeApp(tk.Tk):
 
     def _period_values(self) -> list[str]:
         return ["full-game", *self.config_data.periods]
+
+    def _build_datetime_input(
+        self, parent: tk.Misc, hour_var: tk.StringVar, minute_var: tk.StringVar
+    ) -> tuple[ttk.Frame, StableDateEntry]:
+        frame = ttk.Frame(parent)
+        date_entry = StableDateEntry(frame, date_pattern="mm/dd/yyyy", textvariable=tk.StringVar(), width=14)
+        date_entry.pack(side="left")
+        ttk.Spinbox(frame, from_=0, to=23, wrap=True, width=2, textvariable=hour_var, format="%02.0f").pack(
+            side="left", padx=(8, 0)
+        )
+        ttk.Label(frame, text=":").pack(side="left")
+        ttk.Spinbox(frame, from_=0, to=59, wrap=True, width=2, textvariable=minute_var, format="%02.0f").pack(
+            side="left"
+        )
+        return frame, date_entry
 
     def _refresh_market_selection(self) -> None:
         for child in self.market_frame.winfo_children():
@@ -425,10 +450,14 @@ class HedgeApp(tk.Tk):
     def _query_window(self) -> tuple:
         start_date = self.from_date.get_date()
         end_date = self.to_date.get_date()
-        if end_date < start_date:
-            raise ValueError("End date must be on or after start date.")
-        start = datetime.combine(start_date, datetime.min.time()).astimezone(timezone.utc)
-        end = datetime.combine(end_date, datetime.max.time()).astimezone(timezone.utc).replace(microsecond=0)
+        start_time = time(hour=int(self.start_hour.get()), minute=int(self.start_minute.get()))
+        end_time = time(hour=int(self.end_hour.get()), minute=int(self.end_minute.get()))
+        start_local = datetime.combine(start_date, start_time)
+        end_local = datetime.combine(end_date, end_time)
+        if end_local < start_local:
+            raise ValueError("End date and time must be on or after start date and time.")
+        start = start_local.astimezone(timezone.utc)
+        end = end_local.astimezone(timezone.utc)
         return start, end
 
     def query_events(self) -> None:
@@ -440,6 +469,13 @@ class HedgeApp(tk.Tk):
             return
 
         self.status.set("Finding events...")
+        self.events_loaded = False
+        self.events_query_scope = (
+            commence_from,
+            commence_to,
+            tuple(self._sport_keys()),
+            self.keyword.get(),
+        )
         threading.Thread(target=self._query_events_worker, args=(api_keys, commence_from, commence_to), daemon=True).start()
 
     def _query_events_worker(self, api_keys, commence_from, commence_to) -> None:
@@ -471,6 +507,7 @@ class HedgeApp(tk.Tk):
 
     def _show_events(self, events: list[dict]) -> None:
         self.events = events
+        self.events_loaded = True
         self.event_by_index = {}
         for item in self.event_list.get_children():
             self.event_list.delete(item)
@@ -516,6 +553,19 @@ class HedgeApp(tk.Tk):
                         if self.event_by_index[int(item_id)].get("sport_key")
                     )
                 )
+            elif (
+                self.period.get() == "full-game"
+                and self.events_loaded
+                and self.events_query_scope == self._current_event_query_scope()
+            ):
+                discovered_sports = {
+                    str(event.get("sport_key", "")) for event in self.events if event.get("sport_key")
+                }
+                selected_leagues = tuple(
+                    sport_key for sport_key in self._sport_keys_for_discovered_events(discovered_sports)
+                )
+                if not selected_leagues:
+                    raise ValueError("No events were found in the selected date range.")
             selected_markets = tuple(name for name, selected in self.market_vars.items() if selected.get())
             selected_hedges = tuple(name for name, selected in self.hedge_vars.items() if selected.get())
             context = build_run_context(
@@ -548,6 +598,26 @@ class HedgeApp(tk.Tk):
             threading.Thread(target=self._estimate_cost_worker, args=(context,), daemon=True).start()
         except (ValueError, KeyError) as exc:
             messagebox.showerror("Run Parameter Error", str(exc))
+
+    def _sport_keys_for_discovered_events(self, discovered_sports: set[str]) -> tuple[str, ...]:
+        requested = set(self._sport_keys())
+        selected: list[str] = []
+        for sport_key in discovered_sports:
+            if sport_key in requested:
+                selected.append(sport_key)
+                continue
+            if any(
+                logical_name in requested
+                and values.get("dynamic_prefix")
+                and sport_key.startswith(str(values["dynamic_prefix"]))
+                for logical_name, values in self.config_data.sports.items()
+            ):
+                selected.append(sport_key)
+        return tuple(sorted(selected))
+
+    def _current_event_query_scope(self) -> tuple:
+        commence_from, commence_to = self._query_window()
+        return commence_from, commence_to, tuple(self._sport_keys()), self.keyword.get()
 
     def _estimate_cost_worker(self, context) -> None:
         try:
@@ -741,7 +811,8 @@ class HedgeApp(tk.Tk):
         body = ttk.Frame(details, padding=16)
         body.pack(fill="both", expand=True)
         ttk.Label(body, text=result.event_name, font=("TkDefaultFont", 12, "bold")).pack(anchor="w")
-        ttk.Label(body, text=f"{result.sport_key} | {describe_market(result.market_key)} | {result.commence_time_local}").pack(anchor="w", pady=(4, 12))
+        local_commence_time = local_event_time({"commence_time": result.commence_time_local})
+        ttk.Label(body, text=f"{result.sport_key} | {describe_market(result.market_key)} | {local_commence_time}").pack(anchor="w", pady=(4, 12))
 
         rows = [
             ("Base platform", result.primary_bookmaker),

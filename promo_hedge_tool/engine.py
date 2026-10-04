@@ -57,8 +57,15 @@ def resolve_sport_keys(config: Config, resolver: SportKeyResolver, selected: tup
             result[logical_name] = resolver.resolve_whitelist([key for key in keys if not selected_set or key in selected_set])
         elif values.get("sport_key") and (not selected_set or logical_name in selected_set or values["sport_key"] in selected_set):
             result[logical_name] = resolver.resolve_fixed(values["sport_key"])
-        elif values.get("dynamic_prefix") and (not selected_set or logical_name in selected_set):
-            result[logical_name] = resolver.resolve_dynamic_prefix(values["dynamic_prefix"])
+        elif values.get("dynamic_prefix"):
+            prefix = str(values["dynamic_prefix"])
+            if not selected_set or logical_name in selected_set:
+                result[logical_name] = resolver.resolve_dynamic_prefix(prefix)
+            else:
+                selected_dynamic = [key for key in selected if key.startswith(prefix)]
+                if selected_dynamic:
+                    available = set(resolver.resolve_dynamic_prefix(prefix))
+                    result[logical_name] = [key for key in selected_dynamic if key in available]
     return {name: keys for name, keys in result.items() if keys}
 
 
