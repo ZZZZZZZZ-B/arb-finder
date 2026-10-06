@@ -56,6 +56,23 @@ python discord_bot.py
 
 SQLite 保存时间、耗时、费用和失败状态，重启后保留。不会保存截图、问题正文或凭据。仓库不包含任何历史数据库。
 
+## Mac 本地快捷键助手
+
+不经过 Discord：框选题目区域后按 **⌥ Space**，截取当前区域并浮窗显示 `True` / `False`。只在触发时截图，不持续监控。结果窗会在截图前暂时隐藏，以免截进图片。API 请求未完成时不接受重复触发。
+
+```bash
+cd discord-bot
+../.venv/bin/python -m pip install -r requirements-mac.txt
+export OPENROUTER_API_KEY='YOUR_OPENROUTER_API_KEY'
+../.venv/bin/python mac_assistant.py
+```
+
+独立安装时也可以按上面的安装步骤创建自己的虚拟环境，并使用 `python`。无需 Discord Token 或频道 ID。
+
+首次启动请在 **系统设置 → 隐私与安全** 中允许运行 Python 的终端/应用进行 **屏幕与系统音频录制（或屏幕录制）**，以及全局快捷键所需的 **辅助功能/输入监控**；修改权限后可能需要重启终端。先将鼠标放在目标显示器，再点击“框选区域”并拖动；Esc 取消。屏幕布局或分辨率变更后应重新框选。若截图为空或答案不符，请检查权限和选区。
+
+窗口提供立即判断、暂停/恢复、统计及退出按钮。快捷键若被其他软件占用，可先使用“立即判断”。默认统计在 `output/mac_stats.sqlite3`（可通过 `MAC_STATS_DB` 更改）；选区坐标保存在本地 `output/mac_region.json`，均已被 Git 忽略。截图只在内存中存在，但触发后会发送到 OpenRouter，因此不要框入私人内容。调用可能产生费用。退出时已发出的请求可能会等待网络超时后才结束。
+
 ## 测试
 
 ```bash
