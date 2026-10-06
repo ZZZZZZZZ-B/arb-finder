@@ -82,13 +82,23 @@ platforms:
     source: odds_api
     title: Hard Rock Bet
     bookmaker_key: hardrockbet
+  betrivers:
+    enabled: false
+    source: odds_api
+    title: BetRivers
+    bookmaker_key: betrivers_ca_on
+  betmgm:
+    enabled: false
+    source: odds_api
+    title: BetMGM
+    bookmaker_key: betmgm_ca_on
 
 odds_api:
   api_key_envs: [ODDS_API_KEYS]
   key_rotation_strategy: round_robin
   odds_format: decimal
   date_format: iso
-  bookmakers: [draftkings, fanduel, proline_ca_on, bet365_au, hardrockbet]
+  bookmakers: [draftkings, fanduel, proline_ca_on, bet365_au, hardrockbet, betrivers_ca_on, betmgm_ca_on]
 
 output:
   formats: [csv, json]
