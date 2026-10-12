@@ -1,0 +1,1158 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blackjack Pro Strategy & Trainer | 21点终极出牌顾问</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        serif: ['Cinzel', 'serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        felt: {
+                            DEFAULT: '#0b3d2c',
+                            dark: '#07241a',
+                            light: '#13543d',
+                            accent: '#10b981'
+                        },
+                        gold: {
+                            400: '#facc15',
+                            500: '#eab308',
+                            600: '#ca8a04',
+                            glow: 'rgba(234, 179, 8, 0.35)'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #050e0a;
+            background-image: 
+                radial-gradient(circle at 50% 0%, #114232 0%, transparent 70%),
+                radial-gradient(circle at 100% 100%, #061e16 0%, transparent 50%);
+            min-height: 100vh;
+        }
+
+        /* Card custom styles */
+        .poker-card {
+            aspect-ratio: 2.5 / 3.5;
+            transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+            user-select: none;
+        }
+        .poker-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 20px -3px rgba(0, 0, 0, 0.6);
+        }
+
+        /* Action badge glows */
+        .glow-hit { box-shadow: 0 0 25px rgba(34, 197, 94, 0.4); }
+        .glow-stand { box-shadow: 0 0 25px rgba(239, 68, 68, 0.4); }
+        .glow-double { box-shadow: 0 0 25px rgba(59, 130, 246, 0.4); }
+        .glow-split { box-shadow: 0 0 25px rgba(245, 158, 11, 0.4); }
+        .glow-surrender { box-shadow: 0 0 25px rgba(168, 85, 247, 0.4); }
+
+        /* Highlight animation for Matrix cells */
+        @keyframes pulse-ring {
+            0% { transform: scale(0.96); box-shadow: 0 0 0 0 rgba(250, 204, 21, 0.8); }
+            70% { transform: scale(1.04); box-shadow: 0 0 0 6px rgba(250, 204, 21, 0); }
+            100% { transform: scale(0.96); box-shadow: 0 0 0 0 rgba(250, 204, 21, 0); }
+        }
+        .cell-highlight {
+            animation: pulse-ring 1.8s infinite ease-in-out;
+            z-index: 20;
+            border: 2px solid #fde047 !important;
+            font-weight: 900 !important;
+        }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #05140e; }
+        ::-webkit-scrollbar-thumb { background: #1a4a38; border-radius: 999px; }
+        ::-webkit-scrollbar-thumb:hover { background: #266b52; }
+    </style>
+</head>
+<body class="text-slate-100 flex flex-col font-sans antialiased selection:bg-emerald-500 selection:text-white">
+
+    <header class="border-b border-emerald-900/60 bg-black/40 backdrop-blur-md sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-green-800 flex items-center justify-center shadow-lg shadow-emerald-950 border border-emerald-400/30">
+                    <span class="text-xl">♠</span>
+                </div>
+                <div>
+                    <h1 class="font-serif font-bold text-lg text-slate-100 tracking-wider flex items-center gap-2">
+                        BLACKJACK <span class="text-gold-400 text-xs tracking-normal font-mono px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30">PRO STRATEGY</span>
+                    </h1>
+                    <p class="text-[11px] text-slate-400">数学期望最优决策引擎 (EV-Optimal)</p>
+                </div>
+            </div>
+
+            <!-- Tab switcher -->
+            <div class="flex bg-slate-900/80 p-1 rounded-xl border border-slate-800 text-xs font-semibold">
+                <button id="tab-advisor-btn" onclick="switchMainTab('advisor')" class="px-3.5 py-1.5 rounded-lg bg-emerald-700 text-white shadow transition-all flex items-center gap-1.5">
+                    <span>⚡</span> <span>出牌顾问</span>
+                </button>
+                <button id="tab-trainer-btn" onclick="switchMainTab('trainer')" class="px-3.5 py-1.5 rounded-lg text-slate-400 hover:text-white transition-all flex items-center gap-1.5">
+                    <span>🎯</span> <span>实战测验</span>
+                </button>
+                <button id="tab-chart-btn" onclick="switchMainTab('chart')" class="px-3.5 py-1.5 rounded-lg text-slate-400 hover:text-white transition-all flex items-center gap-1.5">
+                    <span>📊</span> <span>策略矩阵</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <div class="bg-black/25 border-b border-emerald-900/40 py-2.5">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div class="flex items-center gap-2 text-slate-400">
+                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>当前规则集 (Rule Set):</span>
+                <span class="ml-2 flex items-center gap-2 border-l border-slate-700 pl-3 text-slate-300">
+                    <span>已玩局数</span>
+                    <input id="round-count" type="number" min="0" step="1" value="0" onchange="normalizeRoundCount()" class="w-16 rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-center font-mono font-bold text-emerald-300 focus:border-emerald-500 focus:outline-none" aria-label="已玩局数">
+                    <button type="button" onclick="incrementRoundCount()" class="rounded-md border border-emerald-700 bg-emerald-950/70 px-2.5 py-1 text-xs font-bold text-emerald-200 transition hover:bg-emerald-800" aria-label="记录一局">Count +1</button>
+                </span>
+            </div>
+            <div class="flex flex-wrap items-center gap-4">
+                <!-- S17 / H17 Toggle -->
+                <label class="flex items-center gap-2 cursor-pointer bg-slate-900/90 hover:bg-slate-800/90 px-3 py-1.5 rounded-lg border border-slate-700/60 transition">
+                    <input type="checkbox" id="rule-s17" onchange="updateRuleSettings()" class="rounded border-slate-700 text-emerald-600 focus:ring-0">
+                    <span class="text-slate-300">庄家软17要牌 (<strong id="rule-s17-label" class="text-emerald-400 font-mono">S17 停牌</strong>)</span>
+                </label>
+                <!-- DAS Toggle -->
+                <label class="flex items-center gap-2 cursor-pointer bg-slate-900/90 hover:bg-slate-800/90 px-3 py-1.5 rounded-lg border border-slate-700/60 transition">
+                    <input type="checkbox" id="rule-das" checked onchange="updateRuleSettings()" class="rounded border-slate-700 text-emerald-600 focus:ring-0">
+                    <span class="text-slate-300">分牌后允许Double (<strong class="text-emerald-400 font-mono">DAS</strong>)</span>
+                </label>
+                <!-- Late Surrender -->
+                <label class="flex items-center gap-2 cursor-pointer bg-slate-900/90 hover:bg-slate-800/90 px-3 py-1.5 rounded-lg border border-slate-700/60 transition">
+                    <input type="checkbox" id="rule-surrender" checked onchange="updateRuleSettings()" class="rounded border-slate-700 text-emerald-600 focus:ring-0">
+                    <span class="text-slate-300">允许投降 (<strong class="text-purple-400 font-mono">Surrender</strong>)</span>
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full">
+
+        <!-- ================= SECTION 1: ADVISOR ================= -->
+        <div id="view-advisor" class="space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <!-- Left Panel: Card Selector -->
+                <div class="lg:col-span-7 bg-slate-900/60 backdrop-blur-xl border border-emerald-900/50 rounded-2xl p-5 shadow-2xl space-y-6">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                        <div class="flex items-center gap-2">
+                            <span class="text-emerald-400 text-lg">🎴</span>
+                            <h2 class="font-bold text-slate-100 text-sm tracking-wide">牌桌选择器 (TABLE SELECTOR)</h2>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="resetHand()" class="text-xs px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 transition">清空重选</button>
+                            <button onclick="randomizeHand()" class="text-xs px-2.5 py-1 rounded bg-emerald-800/60 hover:bg-emerald-700 text-emerald-200 transition">🎲 随机发一手</button>
+                        </div>
+                    </div>
+
+                    <!-- Step 1: Dealer Upcard -->
+                    <div>
+                        <div class="flex items-center justify-between mb-2.5">
+                            <span class="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                                <span class="w-1.5 h-1.5 rounded-full bg-gold-400"></span> 1. 庄家明牌 (Dealer Upcard)
+                            </span>
+                            <span id="dealer-selected-label" class="text-xs font-mono font-bold text-gold-400">当前：6</span>
+                        </div>
+                        <div class="grid grid-cols-10 gap-1.5 sm:gap-2" id="dealer-card-buttons">
+                            <!-- Dealer buttons 2-A generated in JS -->
+                        </div>
+                    </div>
+
+                    <!-- Step 2: Player Hand Mode Switch -->
+                    <div>
+                        <div class="flex items-center justify-between mb-2.5">
+                            <span class="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> 2. 玩家手牌 (Player Hand)
+                            </span>
+                            <!-- Mode Selector -->
+                            <div class="flex bg-slate-800/80 p-0.5 rounded-lg text-xs">
+                                <button onclick="setHandMode('cards')" id="handmode-cards-btn" class="px-2.5 py-1 rounded-md bg-emerald-600 text-white font-medium transition">逐张选牌</button>
+                                <button onclick="setHandMode('preset')" id="handmode-preset-btn" class="px-2.5 py-1 rounded-md text-slate-400 hover:text-white font-medium transition">点数速选</button>
+                            </div>
+                        </div>
+
+                        <!-- Sub-mode A: Variable-length card selection -->
+                        <div id="hand-input-cards-container" class="space-y-3">
+                            <div class="min-h-20 p-3 bg-black/30 rounded-xl border border-slate-800">
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="text-[11px] text-slate-400">玩家手牌 · 点选牌面可移除</span>
+                                    <span id="hand-card-count" class="text-[11px] font-mono text-slate-500">2 张</span>
+                                </div>
+                                <div id="selected-player-cards" class="flex min-h-10 flex-wrap items-center gap-2"></div>
+                            </div>
+                            <!-- Card Keypad -->
+                            <div class="text-[11px] text-slate-400 flex justify-between items-center px-1">
+                                <span>点击牌面添加下一张牌：</span>
+                            </div>
+                            <div class="grid grid-cols-10 gap-1.5 sm:gap-2" id="player-card-keypad">
+                                <!-- Generated by JS: 2,3,4...10,J,Q,K,A -->
+                            </div>
+                        </div>
+
+                        <!-- Sub-mode B: Preset Category Selection -->
+                        <div id="hand-input-preset-container" class="hidden space-y-3">
+                            <!-- Hand type Tabs -->
+                            <div class="grid grid-cols-3 gap-2">
+                                <button onclick="setPresetCategory('hard')" id="cat-hard-btn" class="py-1.5 rounded-lg bg-emerald-700/80 text-white text-xs font-semibold border border-emerald-600">硬点数 (Hard)</button>
+                                <button onclick="setPresetCategory('soft')" id="cat-soft-btn" class="py-1.5 rounded-lg bg-slate-800 text-slate-400 text-xs font-semibold border border-slate-700 hover:text-white">软点数 (Soft A,x)</button>
+                                <button onclick="setPresetCategory('pairs')" id="cat-pairs-btn" class="py-1.5 rounded-lg bg-slate-800 text-slate-400 text-xs font-semibold border border-slate-700 hover:text-white">对子 (Pairs)</button>
+                            </div>
+                            <!-- Dynamic preset chips -->
+                            <div id="preset-chips-container" class="flex flex-wrap gap-1.5 p-2 bg-black/20 rounded-xl max-h-36 overflow-y-auto">
+                                <!-- Chip buttons dynamically injected -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Current State Summary Badge -->
+                    <div class="bg-gradient-to-r from-emerald-950/60 to-slate-900 border border-emerald-800/40 rounded-xl p-3 flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <span class="text-2xl">📋</span>
+                            <div>
+                                <div class="text-xs text-slate-400 font-medium">当前识别的手牌局面</div>
+                                <div id="hand-description-summary" class="text-sm font-bold text-emerald-300 font-mono">硬 16 点 (Hard 16) vs 庄家 6</div>
+                            </div>
+                        </div>
+                        <div id="hand-tag-badge" class="px-2.5 py-1 text-[11px] font-bold rounded-md bg-emerald-900/80 text-emerald-200 border border-emerald-700/50">
+                            普通硬手
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Panel: Recommendation Card -->
+                <div class="lg:col-span-5 flex flex-col justify-between bg-slate-900/60 backdrop-blur-xl border border-emerald-900/50 rounded-2xl p-6 shadow-2xl relative overflow-hidden">
+                    <div class="absolute -right-8 -top-8 w-44 h-44 rounded-full bg-emerald-500/5 blur-3xl pointer-events-none"></div>
+
+                    <div>
+                        <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-6">
+                            <span class="text-xs uppercase tracking-widest font-mono text-slate-400 flex items-center gap-1.5">
+                                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                                推荐最优出牌动作
+                            </span>
+                            <span class="text-[11px] text-slate-500 font-mono">期望值 EV 最高</span>
+                        </div>
+
+                        <!-- Big Result Badge -->
+                        <div class="text-center py-6">
+                            <div id="advisor-action-badge" class="inline-flex flex-col items-center justify-center w-full py-5 px-6 rounded-2xl bg-red-950/80 border-2 border-red-500 text-red-100 glow-stand transition-all duration-300">
+                                <span id="advisor-action-cn" class="text-4xl sm:text-5xl font-black tracking-tight mb-1">停牌 (STAND)</span>
+                                <span id="advisor-action-en" class="text-xs uppercase font-mono tracking-widest text-red-300 font-semibold">STAND - 不要牌</span>
+                            </div>
+                        </div>
+
+                        <!-- Alternative Fallback info (e.g. Double if allowed, else Hit) -->
+                        <div id="advisor-fallback-container" class="mt-2 text-xs bg-slate-800/60 rounded-lg p-2.5 border border-slate-700 text-slate-300 hidden">
+                            <span class="font-bold text-gold-400">条件限制提示：</span>
+                            <span id="advisor-fallback-text">若赌场不允许加倍，则选择要牌 (Hit)。</span>
+                        </div>
+
+                        <!-- Strategy Explanation -->
+                        <div class="mt-5 space-y-2">
+                            <div class="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                                <span class="text-emerald-400">💡</span> 数学原理与胜率解析：
+                            </div>
+                            <p id="advisor-reason-text" class="text-xs text-slate-300 leading-relaxed bg-black/30 p-3.5 rounded-xl border border-slate-800/80">
+                                庄家亮牌为 6 时爆牌概率高达约 42.1%。玩家 16 点要牌极易爆牌（>61%），保持现状让庄家自己爆牌是长期损失最小的最优决策。
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Quick Matrix Preview CTA -->
+                    <div class="mt-6 pt-4 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+                        <span>想看完整对照表？</span>
+                        <button onclick="switchMainTab('chart'); highlightCurrentCell();" class="text-gold-400 hover:text-gold-300 font-medium underline flex items-center gap-1">
+                            在矩阵表中定位此手牌 →
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= SECTION 2: TRAINER ================= -->
+        <div id="view-trainer" class="hidden space-y-6">
+            <div class="max-w-4xl mx-auto bg-slate-900/80 backdrop-blur-xl border border-emerald-900/50 rounded-2xl p-6 sm:p-8 shadow-2xl space-y-8">
+                <!-- Header & Stats -->
+                <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-5">
+                    <div>
+                        <h2 class="text-xl font-bold font-serif tracking-wider text-slate-100 flex items-center gap-2">
+                            <span>🎯</span> 策略实战盲测 (STRATEGY TRAINER)
+                        </h2>
+                        <p class="text-xs text-slate-400 mt-1">随机发牌，测试你的第一反应与肌肉记忆</p>
+                    </div>
+
+                    <div class="flex items-center gap-4 bg-black/40 px-4 py-2 rounded-xl border border-slate-800 font-mono text-xs">
+                        <div>
+                            <span class="text-slate-400">总题数:</span>
+                            <span id="stat-total" class="font-bold text-white ml-1">0</span>
+                        </div>
+                        <div class="w-px h-4 bg-slate-700"></div>
+                        <div>
+                            <span class="text-slate-400">准确率:</span>
+                            <span id="stat-acc" class="font-bold text-emerald-400 ml-1">100%</span>
+                        </div>
+                        <div class="w-px h-4 bg-slate-700"></div>
+                        <div>
+                            <span class="text-slate-400">当前连击:</span>
+                            <span id="stat-streak" class="font-bold text-gold-400 ml-1">🔥 0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Game Table Felt -->
+                <div class="bg-felt-dark/90 border-2 border-felt-light rounded-3xl p-6 sm:p-10 shadow-2xl text-center relative overflow-hidden">
+                    <div class="absolute inset-0 bg-[radial-gradient(#13543d_1px,transparent_1px)] [background-size:16px_16px] opacity-30"></div>
+
+                    <!-- Dealer Area -->
+                    <div class="relative z-10 mb-8">
+                        <div class="text-[11px] tracking-wider uppercase font-mono text-emerald-300 font-semibold mb-2">庄家明牌 (Dealer Upcard)</div>
+                        <div class="flex justify-center items-center gap-3">
+                            <!-- Dealer Card 1 (Face Up) -->
+                            <div id="trainer-dealer-card" class="poker-card w-20 sm:w-24 bg-white rounded-xl shadow-xl border border-slate-200 flex flex-col justify-between p-2 text-slate-900 font-bold transition-transform">
+                                <div class="text-left text-sm leading-none font-mono" id="td-corner-top">6<span class="text-xs block text-red-600">♥</span></div>
+                                <div class="text-2xl sm:text-3xl text-center" id="td-center-suit">♥</div>
+                                <div class="text-right text-sm leading-none font-mono rotate-180" id="td-corner-bot">6<span class="text-xs block text-red-600">♥</span></div>
+                            </div>
+                            <!-- Dealer Hidden Card -->
+                            <div class="poker-card w-20 sm:w-24 bg-gradient-to-br from-blue-900 to-indigo-950 rounded-xl shadow-xl border-2 border-blue-400/40 flex items-center justify-center text-blue-300 opacity-90">
+                                <span class="text-2xl">🂠</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Player Area -->
+                    <div class="relative z-10">
+                        <div class="text-[11px] tracking-wider uppercase font-mono text-emerald-300 font-semibold mb-2">你的手牌 (Your Hand)</div>
+                        <div class="flex justify-center items-center gap-3" id="trainer-player-cards-box">
+                            <!-- Card 1 -->
+                            <div id="trainer-player-c1" class="poker-card w-20 sm:w-24 bg-white rounded-xl shadow-xl border border-slate-200 flex flex-col justify-between p-2 text-slate-900 font-bold">
+                                <div class="text-left text-sm leading-none font-mono" id="tp1-corner-top">10<span class="text-xs block text-slate-900">♠</span></div>
+                                <div class="text-2xl sm:text-3xl text-center" id="tp1-center-suit">♠</div>
+                                <div class="text-right text-sm leading-none font-mono rotate-180" id="tp1-corner-bot">10<span class="text-xs block text-slate-900">♠</span></div>
+                            </div>
+                            <!-- Card 2 -->
+                            <div id="trainer-player-c2" class="poker-card w-20 sm:w-24 bg-white rounded-xl shadow-xl border border-slate-200 flex flex-col justify-between p-2 text-slate-900 font-bold">
+                                <div class="text-left text-sm leading-none font-mono" id="tp2-corner-top">6<span class="text-xs block text-red-600">♦</span></div>
+                                <div class="text-2xl sm:text-3xl text-center" id="tp2-center-suit">♦</div>
+                                <div class="text-right text-sm leading-none font-mono rotate-180" id="tp2-corner-bot">6<span class="text-xs block text-red-600">♦</span></div>
+                            </div>
+                        </div>
+                        <div class="mt-3 text-sm font-mono font-bold text-gold-400" id="trainer-hand-desc">硬 16 点 (Hard 16)</div>
+                    </div>
+                </div>
+
+                <!-- Decision Buttons -->
+                <div class="space-y-4">
+                    <div class="text-center text-xs text-slate-400 font-mono">请做出你的决断：</div>
+                    <div class="grid grid-cols-2 sm:grid-cols-5 gap-2.5 max-w-2xl mx-auto">
+                        <button onclick="handleTrainerAction('H')" class="py-3 px-4 rounded-xl font-bold text-sm bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow-lg transition">要牌 (HIT)</button>
+                        <button onclick="handleTrainerAction('S')" class="py-3 px-4 rounded-xl font-bold text-sm bg-red-600 hover:bg-red-500 active:scale-95 text-white shadow-lg transition">停牌 (STAND)</button>
+                        <button onclick="handleTrainerAction('D')" class="py-3 px-4 rounded-xl font-bold text-sm bg-blue-600 hover:bg-blue-500 active:scale-95 text-white shadow-lg transition">加倍 (DOUBLE)</button>
+                        <button id="trainer-btn-split" onclick="handleTrainerAction('P')" class="py-3 px-4 rounded-xl font-bold text-sm bg-amber-600 hover:bg-amber-500 active:scale-95 text-white shadow-lg transition disabled:opacity-30 disabled:cursor-not-allowed">分牌 (SPLIT)</button>
+                        <button onclick="handleTrainerAction('Rh')" class="col-span-2 sm:col-span-1 py-3 px-4 rounded-xl font-bold text-sm bg-purple-700 hover:bg-purple-600 active:scale-95 text-white shadow-lg transition">投降 (SURRENDER)</button>
+                    </div>
+                </div>
+
+                <!-- Feedback Alert Container -->
+                <div id="trainer-feedback" class="hidden p-4 rounded-xl border text-sm transition-all duration-300">
+                    <div class="flex items-start gap-3">
+                        <span id="feedback-icon" class="text-2xl">✅</span>
+                        <div class="space-y-1">
+                            <div id="feedback-title" class="font-bold text-base">回答正确！</div>
+                            <div id="feedback-body" class="text-xs text-slate-300">这是最优期望解。</div>
+                        </div>
+                    </div>
+                    <div class="mt-3 text-right">
+                        <button onclick="nextTrainerRound()" class="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white transition">下一题 (Space 键) →</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= SECTION 3: STRATEGY CHART ================= -->
+        <div id="view-chart" class="hidden space-y-6">
+            <div class="bg-slate-900/80 backdrop-blur-xl border border-emerald-900/50 rounded-2xl p-6 shadow-2xl space-y-6">
+                <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
+                    <div>
+                        <h2 class="text-xl font-bold font-serif tracking-wider text-slate-100 flex items-center gap-2">
+                            <span>📊</span> 完整基本策略对照矩阵 (BASIC STRATEGY CHART)
+                        </h2>
+                        <p class="text-xs text-slate-400 mt-1">4-8副牌 · 动态适应当前 S17/H17 与 DAS 规则</p>
+                    </div>
+
+                    <!-- Legend -->
+                    <div class="flex flex-wrap items-center gap-2 text-xs font-mono">
+                        <span class="px-2.5 py-1 rounded bg-emerald-700 text-white font-bold">H: Hit 要牌</span>
+                        <span class="px-2.5 py-1 rounded bg-red-700 text-white font-bold">S: Stand 停牌</span>
+                        <span class="px-2.5 py-1 rounded bg-blue-700 text-white font-bold">D: Double 加倍</span>
+                        <span class="px-2.5 py-1 rounded bg-amber-600 text-white font-bold">P: Split 分牌</span>
+                        <span class="px-2.5 py-1 rounded bg-purple-800 text-white font-bold">Rh: 投降 (否则Hit)</span>
+                    </div>
+                </div>
+
+                <!-- Tabs for Hard / Soft / Pairs in Chart -->
+                <div class="flex border-b border-slate-800 gap-2">
+                    <button onclick="renderChartSection('hard')" id="chart-tab-hard" class="px-4 py-2 border-b-2 border-emerald-500 font-bold text-sm text-emerald-400">硬点数 (Hard 8-17+)</button>
+                    <button onclick="renderChartSection('soft')" id="chart-tab-soft" class="px-4 py-2 border-b-2 border-transparent font-medium text-sm text-slate-400 hover:text-white">软点数 (Soft 13-20)</button>
+                    <button onclick="renderChartSection('pairs')" id="chart-tab-pairs" class="px-4 py-2 border-b-2 border-transparent font-medium text-sm text-slate-400 hover:text-white">对子分牌 (Pairs 2,2-A,A)</button>
+                </div>
+
+                <!-- Matrix Table Wrapper -->
+                <div class="overflow-x-auto rounded-xl border border-slate-800 bg-black/40">
+                    <table class="w-full text-center border-collapse font-mono text-xs" id="strategy-table">
+                        <!-- Head and body dynamically filled -->
+                    </table>
+                </div>
+
+                <div class="text-[11px] text-slate-400 bg-slate-800/40 p-3 rounded-lg border border-slate-800">
+                    💡 <strong class="text-slate-300">提示：</strong>在表格任意单元格点击，即可直接将手牌同步导入【出牌顾问】进行深度推演！黄色脉冲框标明当前在顾问中选择的组合。
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <footer class="mt-auto border-t border-slate-900 bg-black/50 py-4 text-center text-xs text-slate-500">
+        <p>Blackjack Basic Strategy Advisor · 基于统计学期望值 (EV) 最优策略编制 · 祝你在牌桌无往不利</p>
+    </footer>
+
+    <script>
+        /* ============================================================
+           1. CORE DATA STRUCTURES & STRATEGY ENGINE
+           ============================================================ */
+        
+        // Dealer Upcards
+        const DEALER_CARDS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'A'];
+
+        // Rules configuration
+        const rules = {
+            s17: true,       // true: Dealer stands on soft 17 (S17); false: Dealer hits on soft 17 (H17)
+            das: true,       // Double After Split allowed
+            surrender: true  // Late Surrender allowed
+        };
+
+        // Current Hand State
+        let currentHandState = {
+            dealerCard: '6',
+            playerCards: ['10', '6'],
+            inputMode: 'cards', // 'cards' | 'preset'
+            presetType: 'hard',  // 'hard' | 'soft' | 'pairs'
+            presetValue: '16'
+        };
+
+        // Strategy Matrix Definitions
+        // Codes: 
+        // H: Hit, S: Stand, D: Double (else Hit), Ds: Double (else Stand)
+        // P: Split, Rh: Surrender (else Hit), Rs: Surrender (else Stand), Rp: Surrender (else Split)
+        const BASE_STRATEGY = {
+            hard: {
+                '17+': ['S', 'S', 'S', 'S', 'S', 'S', 'S', 'S', 'S', 'S'],
+                '16':  ['S', 'S', 'S', 'S', 'S', 'H', 'H', 'Rh', 'Rh', 'Rh'],
+                '15':  ['S', 'S', 'S', 'S', 'S', 'H', 'H', 'H', 'Rh', 'H'],
+                '14':  ['S', 'S', 'S', 'S', 'S', 'H', 'H', 'H', 'H', 'H'],
+                '13':  ['S', 'S', 'S', 'S', 'S', 'H', 'H', 'H', 'H', 'H'],
+                '12':  ['H', 'H', 'S', 'S', 'S', 'H', 'H', 'H', 'H', 'H'],
+                '11':  ['D', 'D', 'D', 'D', 'D', 'D', 'D', 'D', 'D', 'H'],
+                '10':  ['D', 'D', 'D', 'D', 'D', 'D', 'D', 'D', 'H', 'H'],
+                '9':   ['H', 'D', 'D', 'D', 'D', 'H', 'H', 'H', 'H', 'H'],
+                '8-':  ['H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H']
+            },
+            soft: {
+                'A,9': ['S', 'S', 'S', 'S', 'S', 'S', 'S', 'S', 'S', 'S'], // 20
+                'A,8': ['S', 'S', 'S', 'S', 'Ds', 'S', 'S', 'S', 'S', 'S'], // 19
+                'A,7': ['S', 'Ds', 'Ds', 'Ds', 'Ds', 'S', 'S', 'H', 'H', 'H'], // 18
+                'A,6': ['H', 'D', 'D', 'D', 'D', 'H', 'H', 'H', 'H', 'H'], // 17
+                'A,5': ['H', 'H', 'D', 'D', 'D', 'H', 'H', 'H', 'H', 'H'], // 16
+                'A,4': ['H', 'H', 'D', 'D', 'D', 'H', 'H', 'H', 'H', 'H'], // 15
+                'A,3': ['H', 'H', 'H', 'D', 'D', 'H', 'H', 'H', 'H', 'H'], // 14
+                'A,2': ['H', 'H', 'H', 'D', 'D', 'H', 'H', 'H', 'H', 'H']  // 13
+            },
+            pairs: {
+                'A,A': ['P', 'P', 'P', 'P', 'P', 'P', 'P', 'P', 'P', 'P'],
+                '10,10': ['S', 'S', 'S', 'S', 'S', 'S', 'S', 'S', 'S', 'S'],
+                '9,9': ['P', 'P', 'P', 'P', 'P', 'S', 'P', 'P', 'S', 'S'],
+                '8,8': ['P', 'P', 'P', 'P', 'P', 'P', 'P', 'P', 'P', 'P'],
+                '7,7': ['P', 'P', 'P', 'P', 'P', 'P', 'H', 'H', 'H', 'H'],
+                '6,6': ['P', 'P', 'P', 'P', 'P', 'H', 'H', 'H', 'H', 'H'],
+                '5,5': ['D', 'D', 'D', 'D', 'D', 'D', 'D', 'D', 'H', 'H'],
+                '4,4': ['H', 'H', 'H', 'P', 'P', 'H', 'H', 'H', 'H', 'H'],
+                '3,3': ['P', 'P', 'P', 'P', 'P', 'P', 'H', 'H', 'H', 'H'],
+                '2,2': ['P', 'P', 'P', 'P', 'P', 'P', 'H', 'H', 'H', 'H']
+            }
+        };
+
+        // Action explanations lookup
+        const ACTION_DESCRIPTIONS = {
+            'H': { title: '要牌 (HIT)', bg: 'bg-emerald-600', border: 'border-emerald-500', glow: 'glow-hit', text: 'text-emerald-100', sub: 'HIT - 额外拿一张牌' },
+            'S': { title: '停牌 (STAND)', bg: 'bg-red-600', border: 'border-red-500', glow: 'glow-stand', text: 'text-red-100', sub: 'STAND - 保持现有手牌' },
+            'D': { title: '加倍 (DOUBLE)', bg: 'bg-blue-600', border: 'border-blue-500', glow: 'glow-double', text: 'text-blue-100', sub: 'DOUBLE DOWN - 下注翻倍并只拿一张牌' },
+            'Ds': { title: '加倍 / 停牌', bg: 'bg-blue-700', border: 'border-blue-400', glow: 'glow-double', text: 'text-blue-100', sub: '若允许加倍则加倍，否则停牌' },
+            'P': { title: '分牌 (SPLIT)', bg: 'bg-amber-600', border: 'border-amber-500', glow: 'glow-split', text: 'text-amber-100', sub: 'SPLIT - 拆分为两手独立牌局' },
+            'Rh': { title: '投降 (SURRENDER)', bg: 'bg-purple-700', border: 'border-purple-500', glow: 'glow-surrender', text: 'text-purple-100', sub: 'SURRENDER - 放弃一半注码，若不允许则要牌' },
+            'Rs': { title: '投降 / 停牌', bg: 'bg-purple-700', border: 'border-purple-500', glow: 'glow-surrender', text: 'text-purple-100', sub: '投降，若不允许投降则停牌' },
+            'INCOMPLETE': { title: '请继续选牌', bg: 'bg-slate-700', border: 'border-slate-500', glow: '', text: 'text-slate-100', sub: '至少需要两张手牌才能查询策略' },
+            'BUST': { title: '已爆牌', bg: 'bg-red-900', border: 'border-red-600', glow: '', text: 'text-red-100', sub: '手牌点数超过 21，本局无法继续要牌' }
+        };
+
+        // Calculate EV action dynamically considering user rules
+        function getOptimalAction(handType, key, dealerCard) {
+            const dealerIdx = DEALER_CARDS.indexOf(dealerCard);
+            let action = BASE_STRATEGY[handType][key][dealerIdx];
+
+            // Adjust for H17 vs S17 rule variations
+            if (!rules.s17) {
+                // Dealer Hits Soft 17 adjustments
+                if (handType === 'hard') {
+                    if (key === '11' && dealerCard === 'A') action = 'D';
+                    if (key === '15' && dealerCard === 'A' && rules.surrender) action = 'Rh';
+                    if (key === '17+' && dealerCard === 'A' && rules.surrender) action = 'Rs';
+                } else if (handType === 'soft') {
+                    if (key === 'A,8' && dealerCard === '6') action = 'Ds';
+                    if (key === 'A,7' && dealerCard === '2') action = 'Ds';
+                } else if (handType === 'pairs') {
+                }
+            }
+
+            // Adjust for DAS (Double After Split) rule
+            if (!rules.das && handType === 'pairs') {
+                if (['2,2', '3,3'].includes(key) && (dealerCard === '2' || dealerCard === '3')) action = 'H';
+                if (key === '4,4' && (dealerCard === '5' || dealerCard === '6')) action = 'H';
+                if (key === '6,6' && dealerCard === '2') action = 'H';
+            }
+
+            // Adjust for Surrender disabled
+            if (!rules.surrender) {
+                if (action === 'Rh') action = 'H';
+                if (action === 'Rs') action = 'S';
+            }
+
+            return action;
+        }
+
+        // Classify a hand, valuing aces as 11 when the hand can safely keep that value.
+        function parseCards(cards) {
+            if (cards.length < 2) {
+                return { type: 'incomplete', total: cards.length ? cardNumericVal(cards[0]) : 0, soft: false };
+            }
+
+            const cardValue = (card) => ['10', 'J', 'Q', 'K'].includes(card) ? '10' : card;
+            if (cards.length === 2 && cardValue(cards[0]) === cardValue(cards[1])) {
+                const pairKey = cards[0] === 'A' ? 'A,A' : `${cardValue(cards[0])},${cardValue(cards[0])}`;
+                const total = cards[0] === 'A' ? 12 : cardNumericVal(cards[0]) * 2;
+                return { type: 'pairs', key: pairKey, total: total, soft: cards[0] === 'A', aceValue: cards[0] === 'A' ? 11 : null };
+            }
+
+            let total = cards.reduce((sum, card) => sum + (card === 'A' ? 1 : cardNumericVal(card)), 0);
+            const soft = cards.includes('A') && total + 10 <= 21;
+            if (soft) total += 10;
+
+            if (total > 21) return { type: 'bust', total: total, soft: false, aceValue: cards.includes('A') ? 1 : null };
+            if (total === 21) return { type: 'hard', key: '17+', total: total, soft: false, aceValue: soft ? 11 : (cards.includes('A') ? 1 : null) };
+            if (soft) return { type: 'soft', key: `A,${total - 11}`, total: total, soft: true, aceValue: 11 };
+
+            const key = total >= 17 ? '17+' : total <= 8 ? '8-' : String(total);
+            return { type: 'hard', key: key, total: total, soft: false, aceValue: cards.includes('A') ? 1 : null };
+        }
+
+        function cardNumericVal(c) {
+            if (['J', 'Q', 'K', '10'].includes(c)) return 10;
+            if (c === 'A') return 11;
+            return parseInt(c, 10);
+        }
+
+        function incrementRoundCount() {
+            const input = document.getElementById('round-count');
+            const currentCount = Number(input.value);
+            const count = Number.isSafeInteger(currentCount) && currentCount >= 0 ? currentCount + 1 : 1;
+            input.value = String(count);
+        }
+
+        function normalizeRoundCount() {
+            const input = document.getElementById('round-count');
+            const count = Number(input.value);
+            input.value = String(Number.isSafeInteger(count) && count >= 0 ? count : 0);
+        }
+
+        function initApp() {
+            renderDealerButtons();
+            renderPlayerKeypad();
+            renderSelectedCards();
+            renderPresetChips();
+            updateAdvisor();
+            initTrainer();
+            renderChartSection('hard');
+        }
+
+        // Render 2-A Dealer Card Selector Buttons
+        function renderDealerButtons() {
+            const container = document.getElementById('dealer-card-buttons');
+            container.innerHTML = '';
+            DEALER_CARDS.forEach(card => {
+                const isSelected = (currentHandState.dealerCard === card);
+                const btn = document.createElement('button');
+                btn.className = `py-2 rounded-xl font-mono font-bold text-sm border transition-all ${
+                    isSelected 
+                        ? 'bg-gold-500 text-slate-950 border-gold-400 shadow-lg scale-105 ring-2 ring-gold-400/50' 
+                        : 'bg-slate-800/90 hover:bg-slate-700 text-slate-200 border-slate-700'
+                }`;
+                btn.textContent = card;
+                btn.onclick = () => {
+                    currentHandState.dealerCard = card;
+                    renderDealerButtons();
+                    updateAdvisor();
+                };
+                container.appendChild(btn);
+            });
+            document.getElementById('dealer-selected-label').textContent = `当前：${currentHandState.dealerCard}`;
+        }
+
+        // Render Player Keypad
+        function renderPlayerKeypad() {
+            const keys = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+            const container = document.getElementById('player-card-keypad');
+            container.innerHTML = '';
+            keys.forEach(k => {
+                const btn = document.createElement('button');
+                btn.className = 'py-2 bg-slate-800 hover:bg-emerald-700 border border-slate-700 hover:border-emerald-500 text-slate-100 rounded-lg font-mono font-bold text-xs transition active:scale-95';
+                btn.textContent = k;
+                btn.onclick = () => addCardToHand(k);
+                container.appendChild(btn);
+            });
+        }
+
+        function renderSelectedCards() {
+            const container = document.getElementById('selected-player-cards');
+            container.innerHTML = '';
+            currentHandState.playerCards.forEach((card, index) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'min-w-11 rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 font-mono text-lg font-black text-slate-100 shadow-inner transition hover:border-red-400 hover:text-red-200';
+                button.textContent = `${card} ×`;
+                button.setAttribute('aria-label', `移除第 ${index + 1} 张 ${card}`);
+                button.title = '点击移除此牌';
+                button.onclick = () => removeCardFromHand(index);
+                container.appendChild(button);
+            });
+            document.getElementById('hand-card-count').textContent = `${currentHandState.playerCards.length} 张`;
+        }
+
+        function addCardToHand(card) {
+            currentHandState.playerCards.push(card);
+            renderSelectedCards();
+            updateAdvisor();
+        }
+
+        function removeCardFromHand(index) {
+            currentHandState.playerCards.splice(index, 1);
+            renderSelectedCards();
+            updateAdvisor();
+        }
+
+        function renderPresetChips() {
+            const container = document.getElementById('preset-chips-container');
+            container.innerHTML = '';
+            const type = currentHandState.presetType;
+
+            let items = [];
+            if (type === 'hard') items = ['17+', '16', '15', '14', '13', '12', '11', '10', '9', '8-'];
+            if (type === 'soft') items = ['A,9', 'A,8', 'A,7', 'A,6', 'A,5', 'A,4', 'A,3', 'A,2'];
+            if (type === 'pairs') items = ['A,A', '10,10', '9,9', '8,8', '7,7', '6,6', '5,5', '4,4', '3,3', '2,2'];
+
+            items.forEach(val => {
+                const isSelected = (currentHandState.presetValue === val);
+                const chip = document.createElement('button');
+                chip.className = `px-3 py-1.5 rounded-lg text-xs font-mono font-bold border transition ${
+                    isSelected 
+                        ? 'bg-emerald-600 text-white border-emerald-400 shadow-md' 
+                        : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                }`;
+                chip.textContent = val;
+                chip.onclick = () => {
+                    currentHandState.presetValue = val;
+                    renderPresetChips();
+                    updateAdvisor();
+                };
+                container.appendChild(chip);
+            });
+        }
+
+        function setHandMode(mode) {
+            currentHandState.inputMode = mode;
+            const cBtn = document.getElementById('handmode-cards-btn');
+            const pBtn = document.getElementById('handmode-preset-btn');
+            const cBox = document.getElementById('hand-input-cards-container');
+            const pBox = document.getElementById('hand-input-preset-container');
+
+            if (mode === 'cards') {
+                cBtn.className = 'px-2.5 py-1 rounded-md bg-emerald-600 text-white font-medium transition';
+                pBtn.className = 'px-2.5 py-1 rounded-md text-slate-400 hover:text-white font-medium transition';
+                cBox.classList.remove('hidden');
+                pBox.classList.add('hidden');
+            } else {
+                pBtn.className = 'px-2.5 py-1 rounded-md bg-emerald-600 text-white font-medium transition';
+                cBtn.className = 'px-2.5 py-1 rounded-md text-slate-400 hover:text-white font-medium transition';
+                pBox.classList.remove('hidden');
+                cBox.classList.add('hidden');
+            }
+            updateAdvisor();
+        }
+
+        function setPresetCategory(cat) {
+            currentHandState.presetType = cat;
+            const btns = { hard: 'cat-hard-btn', soft: 'cat-soft-btn', pairs: 'cat-pairs-btn' };
+            Object.keys(btns).forEach(k => {
+                const b = document.getElementById(btns[k]);
+                if (k === cat) {
+                    b.className = 'py-1.5 rounded-lg bg-emerald-700/80 text-white text-xs font-semibold border border-emerald-600';
+                } else {
+                    b.className = 'py-1.5 rounded-lg bg-slate-800 text-slate-400 text-xs font-semibold border border-slate-700 hover:text-white';
+                }
+            });
+
+            // Set default presetValue for that category
+            if (cat === 'hard') currentHandState.presetValue = '16';
+            if (cat === 'soft') currentHandState.presetValue = 'A,7';
+            if (cat === 'pairs') currentHandState.presetValue = '8,8';
+
+            renderPresetChips();
+            updateAdvisor();
+        }
+
+        function updateAdvisor() {
+            let handInfo;
+            if (currentHandState.inputMode === 'cards') {
+                handInfo = parseCards(currentHandState.playerCards);
+            } else {
+                handInfo = {
+                    type: currentHandState.presetType,
+                    key: currentHandState.presetValue
+                };
+            }
+
+            const dealer = currentHandState.dealerCard;
+            let action = handInfo.type === 'incomplete' ? 'INCOMPLETE' : handInfo.type === 'bust' ? 'BUST' : getOptimalAction(handInfo.type, handInfo.key, dealer);
+            let actionNote = '';
+            if (currentHandState.inputMode === 'cards' && currentHandState.playerCards.length > 2 && !['BUST', 'INCOMPLETE'].includes(action)) {
+                if (['D', 'Rh', 'P'].includes(action)) {
+                    action = 'H';
+                    actionNote = '已超过两张牌，不能加倍、分牌或投降；此建议按要牌处理。';
+                } else if (['Ds', 'Rs'].includes(action)) {
+                    action = 'S';
+                    actionNote = '已超过两张牌，不能加倍或投降；此建议按停牌处理。';
+                }
+            }
+
+            // Update summary badge
+            let typeDesc = handInfo.total === 21 ? '21 点' : '硬手 (Hard Total)';
+            if (handInfo.type === 'soft') typeDesc = '软点数 (Soft Hand)';
+            if (handInfo.type === 'pairs') typeDesc = '对子手牌 (Pair Hand)';
+
+            const playerCards = currentHandState.playerCards;
+            let summary = `${handInfo.key} vs 庄家 ${dealer}`;
+            if (currentHandState.inputMode === 'cards') {
+                const aceCount = playerCards.filter(card => card === 'A').length;
+                const aceSummary = aceCount > 0
+                    ? `（${handInfo.aceValue === 11 ? (aceCount > 1 ? '一张 A 按11点，其余 A 按1点' : 'A 按11点') : 'A 均按1点'}）`
+                    : '';
+                if (handInfo.type === 'incomplete') summary = `${playerCards.length ? playerCards.join(' + ') : '尚未选牌'} · 至少需要两张牌`;
+                else if (handInfo.type === 'bust') summary = `${playerCards.join(' + ')} = 爆牌 ${handInfo.total} 点${aceSummary} vs 庄家 ${dealer}`;
+                else if (handInfo.type === 'pairs') summary = `${playerCards.join(' + ')} = ${handInfo.soft ? '软对子' : '对子'} ${handInfo.total} 点${aceSummary} vs 庄家 ${dealer}`;
+                else summary = `${playerCards.join(' + ')} = ${handInfo.total === 21 ? '21' : `${handInfo.soft ? '软' : '硬'} ${handInfo.total}`} 点${aceSummary} vs 庄家 ${dealer}`;
+            }
+            document.getElementById('hand-description-summary').textContent = summary;
+            document.getElementById('hand-tag-badge').textContent = handInfo.type === 'incomplete' ? '未完成手牌' : handInfo.type === 'bust' ? '本局结束' : typeDesc;
+
+            // Render Big Action Badge
+            const badge = document.getElementById('advisor-action-badge');
+            const actionInfo = ACTION_DESCRIPTIONS[action] || ACTION_DESCRIPTIONS['H'];
+
+            badge.className = `inline-flex flex-col items-center justify-center w-full py-5 px-6 rounded-2xl border-2 transition-all duration-300 ${actionInfo.bg} ${actionInfo.border} ${actionInfo.text} ${actionInfo.glow}`;
+            document.getElementById('advisor-action-cn').textContent = actionInfo.title;
+            document.getElementById('advisor-action-en').textContent = actionInfo.sub;
+
+            // Render Fallback notice if Double or Surrender
+            const fallbackContainer = document.getElementById('advisor-fallback-container');
+            const fallbackText = document.getElementById('advisor-fallback-text');
+            if (actionNote) {
+                fallbackContainer.classList.remove('hidden');
+                fallbackText.textContent = actionNote;
+            } else if (action === 'D') {
+                fallbackContainer.classList.remove('hidden');
+                fallbackText.textContent = '若赌桌不允许 Double（如已分牌或发牌后不可倍投），请选择 要牌 (Hit)。';
+            } else if (action === 'Ds') {
+                fallbackContainer.classList.remove('hidden');
+                fallbackText.textContent = '若赌桌不允许 Double，则选择 停牌 (Stand)。';
+            } else if (action === 'Rh') {
+                fallbackContainer.classList.remove('hidden');
+                fallbackText.textContent = '若赌场不提供 Late Surrender（晚投降），必须选择 要牌 (Hit)。';
+            } else if (action === 'Rs') {
+                fallbackContainer.classList.remove('hidden');
+                fallbackText.textContent = '若赌场不提供 Late Surrender（晚投降），必须选择 停牌 (Stand)。';
+            } else {
+                fallbackContainer.classList.add('hidden');
+            }
+
+            // Dynamic Math rationale
+            let reason;
+            if (handInfo.type === 'incomplete') reason = '请选择两张或更多手牌后查看建议。';
+            else if (handInfo.type === 'bust') reason = 'A 已按 1 点计算后，手牌仍超过 21 点。';
+            else if (currentHandState.inputMode === 'cards' && playerCards.length > 2) reason = `根据当前${handInfo.soft ? '软' : '硬'}点数参考基本策略；多张牌后的建议未按剩余牌组成进行 EV 模拟。`;
+            else reason = generateRationale(handInfo.type, handInfo.key, dealer, action);
+            document.getElementById('advisor-reason-text').textContent = reason;
+        }
+
+        function generateRationale(type, key, dealer, action) {
+            if (action === 'P') {
+                if (key === 'A,A') return '对 A 必须永远分牌！分牌能将一个极其尴尬的软12点拆分为两手从起手11点开始构筑的强牌，期望EV暴涨。';
+                if (key === '8,8') return '8对（16点）是21点中最弱的底牌，直接要牌有61.5%概率爆牌；拆开成两手8点出牌，长期期望损失远小于死扛16点。';
+                return `面对庄家 ${dealer} 点（潜在弱牌/中位牌），将对子拆分可以投入双倍赌注并将胜率最大化。`;
+            }
+            if (action === 'S') {
+                if (type === 'hard' && ['12','13','14','15','16'].includes(key)) {
+                    return `庄家牌面为 ${dealer}（典型 Bust Card 爆牌牌面，庄家爆牌概率在 35% ~ 42% 之间）。你的硬点数要牌爆牌风险极高，因此选择停牌让庄家自己爆掉收益最高。`;
+                }
+                if (key === '17+') return '硬 17 点以上已具备极强防守能力，继续要牌的爆牌概率超过 69%，必须永远停牌。';
+                return '保持当前点数在数学上拥有最高保本/获胜期望。';
+            }
+            if (action === 'H') {
+                if (type === 'hard' && ['12','13','14','15','16'].includes(key)) {
+                    return `庄家亮出 ${dealer} 点（强牌面，庄家爆牌概率不足25%）。虽然你要牌也可能爆牌，但停牌死等庄家输掉的期望损失比冒险要牌更惨重，进攻是要牌唯一的生路。`;
+                }
+                return '手牌点数不足以对抗庄家，且无爆牌风险（或要牌EV显著高于停牌），果断补牌。';
+            }
+            if (action === 'D' || action === 'Ds') {
+                return `你的手牌具备极高的成牌优势（如起手 10/11 或软点），而庄家当前为弱势牌面 ${dealer}。双倍下注可以榨取庄家处于被动时的最大期望价值。`;
+            }
+            if (action === 'Rh' || action === 'Rs') {
+                return `手牌硬 ${key} 对抗庄家极具威胁的明牌 ${dealer}，胜率极低（长期输率超过 75%）。选择投降能立刻止损拿回 50% 筹码，是 EV 计算下最理性的选择。`;
+            }
+            return '基于多副牌无偏模拟的标准基本策略最优解。';
+        }
+
+        function updateRuleSettings() {
+            rules.s17 = !document.getElementById('rule-s17').checked;
+            rules.das = document.getElementById('rule-das').checked;
+            rules.surrender = document.getElementById('rule-surrender').checked;
+
+            document.getElementById('rule-s17-label').textContent = rules.s17 ? 'S17 停牌' : 'H17 要牌';
+            document.getElementById('rule-s17-label').className = rules.s17 ? 'text-emerald-400 font-mono' : 'text-amber-400 font-mono';
+
+            updateAdvisor();
+            renderChartSection(currentChartSection);
+        }
+
+        function resetHand() {
+            currentHandState.dealerCard = '6';
+            currentHandState.playerCards = ['10', '6'];
+            renderDealerButtons();
+            renderSelectedCards();
+            updateAdvisor();
+        }
+
+        function randomizeHand() {
+            const pool = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+            currentHandState.dealerCard = DEALER_CARDS[Math.floor(Math.random() * DEALER_CARDS.length)];
+            currentHandState.playerCards = [pool[Math.floor(Math.random() * pool.length)], pool[Math.floor(Math.random() * pool.length)]];
+            renderDealerButtons();
+            renderSelectedCards();
+            updateAdvisor();
+        }
+
+        let currentChartSection = 'hard';
+
+        function renderChartSection(section) {
+            currentChartSection = section;
+            ['hard', 'soft', 'pairs'].forEach(s => {
+                const btn = document.getElementById(`chart-tab-${s}`);
+                if (s === section) {
+                    btn.className = 'px-4 py-2 border-b-2 border-emerald-500 font-bold text-sm text-emerald-400';
+                } else {
+                    btn.className = 'px-4 py-2 border-b-2 border-transparent font-medium text-sm text-slate-400 hover:text-white';
+                }
+            });
+
+            const table = document.getElementById('strategy-table');
+            table.innerHTML = '';
+
+            // Render Header
+            const thead = document.createElement('thead');
+            thead.className = 'bg-slate-950 text-slate-400 border-b border-slate-800';
+            let headRow = `<tr><th class="py-2.5 px-3 text-left">手牌 \\ 庄家</th>`;
+            DEALER_CARDS.forEach(d => {
+                headRow += `<th class="py-2.5 px-2">${d}</th>`;
+            });
+            headRow += `</tr>`;
+            thead.innerHTML = headRow;
+            table.appendChild(thead);
+
+            // Render Body
+            const tbody = document.createElement('tbody');
+            tbody.className = 'divide-y divide-slate-800/60';
+
+            const matrixData = BASE_STRATEGY[section];
+            Object.keys(matrixData).forEach(rowKey => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-800/40 transition';
+
+                // Row title
+                let rowHtml = `<td class="py-2 px-3 text-left font-bold text-slate-200 bg-slate-900/60">${rowKey}</td>`;
+
+                DEALER_CARDS.forEach(dealerCard => {
+                    const action = getOptimalAction(section, rowKey, dealerCard);
+                    let colorClass = 'bg-slate-800 text-slate-300';
+                    if (action === 'H') colorClass = 'bg-emerald-900/70 text-emerald-200 border-emerald-700/50';
+                    if (action === 'S') colorClass = 'bg-red-950/70 text-red-200 border-red-800/50';
+                    if (action === 'D' || action === 'Ds') colorClass = 'bg-blue-900/70 text-blue-200 border-blue-700/50';
+                    if (action === 'P') colorClass = 'bg-amber-900/70 text-amber-200 border-amber-700/50';
+                    if (action.startsWith('R')) colorClass = 'bg-purple-900/70 text-purple-200 border-purple-700/50';
+
+                    const cellId = `cell-${section}-${rowKey.replace(',', '_')}-${dealerCard}`;
+
+                    rowHtml += `
+                        <td class="p-1">
+                            <button id="${cellId}" onclick="loadFromChartCell('${section}', '${rowKey}', '${dealerCard}')" 
+                                    class="w-full py-1.5 rounded text-xs font-bold border transition active:scale-90 ${colorClass}">
+                                ${action}
+                            </button>
+                        </td>
+                    `;
+                });
+
+                tr.innerHTML = rowHtml;
+                tbody.appendChild(tr);
+            });
+            table.appendChild(tbody);
+
+            highlightCurrentCell();
+        }
+
+        function highlightCurrentCell() {
+            // Remove past highlights
+            document.querySelectorAll('.cell-highlight').forEach(el => el.classList.remove('cell-highlight'));
+
+            let handInfo = (currentHandState.inputMode === 'cards')
+                ? parseCards(currentHandState.playerCards)
+                : { type: currentHandState.presetType, key: currentHandState.presetValue };
+
+            if ((currentHandState.inputMode !== 'cards' || currentHandState.playerCards.length === 2) && handInfo.type === currentChartSection) {
+                const cellId = `cell-${handInfo.type}-${handInfo.key.replace(',', '_')}-${currentHandState.dealerCard}`;
+                const target = document.getElementById(cellId);
+                if (target) {
+                    target.classList.add('cell-highlight');
+                }
+            }
+        }
+
+        function loadFromChartCell(section, rowKey, dealerCard) {
+            currentHandState.dealerCard = dealerCard;
+            currentHandState.inputMode = 'preset';
+            currentHandState.presetType = section;
+            currentHandState.presetValue = rowKey;
+
+            renderDealerButtons();
+            setHandMode('preset');
+            setPresetCategory(section);
+            switchMainTab('advisor');
+            updateAdvisor();
+        }
+
+        let trainerStats = {
+            total: 0,
+            correct: 0,
+            streak: 0
+        };
+        let currentTrainerRound = null;
+
+        function initTrainer() {
+            nextTrainerRound();
+        }
+
+        function nextTrainerRound() {
+            document.getElementById('trainer-feedback').classList.add('hidden');
+            const suits = ['♠', '♥', '♦', '♣'];
+            const ranks = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+
+            const getRandomCard = () => {
+                const r = ranks[Math.floor(Math.random() * ranks.length)];
+                const s = suits[Math.floor(Math.random() * suits.length)];
+                const isRed = (s === '♥' || s === '♦');
+                return { rank: r, suit: s, isRed };
+            };
+
+            const dealerCard = getRandomCard();
+            const playerCard1 = getRandomCard();
+            const playerCard2 = getRandomCard();
+
+            currentTrainerRound = {
+                dealer: dealerCard,
+                p1: playerCard1,
+                p2: playerCard2,
+                parsed: parseCards([playerCard1.rank, playerCard2.rank]),
+                solved: false
+            };
+
+            // Render Dealer UI
+            renderCardView('td-corner-top', 'td-center-suit', 'td-corner-bot', dealerCard);
+
+            // Render Player Cards UI
+            renderCardView('tp1-corner-top', 'tp1-center-suit', 'tp1-corner-bot', playerCard1);
+            renderCardView('tp2-corner-top', 'tp2-center-suit', 'tp2-corner-bot', playerCard2);
+
+            // Description
+            const p = currentTrainerRound.parsed;
+            let desc = `点数：${p.key}`;
+            if (p.type === 'pairs') desc = `对子：${p.key}`;
+            else if (p.soft) desc = `软点数：${p.key} (${p.total}点)`;
+            else desc = `硬点数：${p.total} 点`;
+            document.getElementById('trainer-hand-desc').textContent = desc;
+
+            // Enable / Disable Split button
+            const splitBtn = document.getElementById('trainer-btn-split');
+            if (p.type === 'pairs') {
+                splitBtn.disabled = false;
+            } else {
+                splitBtn.disabled = true;
+            }
+        }
+
+        function renderCardView(topId, suitId, botId, card) {
+            const colorClass = card.isRed ? 'text-red-600' : 'text-slate-900';
+            const topEl = document.getElementById(topId);
+            const centerEl = document.getElementById(suitId);
+            const botEl = document.getElementById(botId);
+
+            topEl.innerHTML = `${card.rank}<span class="text-xs block ${colorClass}">${card.suit}</span>`;
+            centerEl.textContent = card.suit;
+            centerEl.className = `text-2xl sm:text-3xl text-center ${colorClass}`;
+            botEl.innerHTML = `${card.rank}<span class="text-xs block ${colorClass}">${card.suit}</span>`;
+        }
+
+        function handleTrainerAction(userAction) {
+            if (!currentTrainerRound || currentTrainerRound.solved) return;
+            currentTrainerRound.solved = true;
+
+            const dealerChar = (currentTrainerRound.dealer.rank === 'J' || currentTrainerRound.dealer.rank === 'Q' || currentTrainerRound.dealer.rank === 'K') 
+                ? '10' 
+                : currentTrainerRound.dealer.rank;
+
+            const expectedAction = getOptimalAction(
+                currentTrainerRound.parsed.type, 
+                currentTrainerRound.parsed.key, 
+                dealerChar
+            );
+
+            // Normalize check (e.g. Rh -> Rh or H depending on user, D/Ds -> D)
+            const isMatch = (
+                userAction === expectedAction || 
+                (expectedAction === 'Ds' && (userAction === 'D' || userAction === 'S')) ||
+                (expectedAction === 'Rh' && (userAction === 'Rh' || (!rules.surrender && userAction === 'H'))) ||
+                (expectedAction === 'Rs' && (userAction === 'Rh' || (!rules.surrender && userAction === 'S')))
+            );
+
+            trainerStats.total++;
+            if (isMatch) {
+                trainerStats.correct++;
+                trainerStats.streak++;
+                showTrainerFeedback(true, expectedAction, dealerChar);
+            } else {
+                trainerStats.streak = 0;
+                showTrainerFeedback(false, expectedAction, dealerChar);
+            }
+
+            // Update stats
+            document.getElementById('stat-total').textContent = trainerStats.total;
+            const accRate = Math.round((trainerStats.correct / trainerStats.total) * 100);
+            document.getElementById('stat-acc').textContent = `${accRate}%`;
+            document.getElementById('stat-streak').textContent = `🔥 ${trainerStats.streak}`;
+        }
+
+        function showTrainerFeedback(isSuccess, expectedCode, dealer) {
+            const box = document.getElementById('trainer-feedback');
+            const icon = document.getElementById('feedback-icon');
+            const title = document.getElementById('feedback-title');
+            const body = document.getElementById('feedback-body');
+
+            box.classList.remove('hidden');
+
+            const actInfo = ACTION_DESCRIPTIONS[expectedCode] || ACTION_DESCRIPTIONS['H'];
+
+            if (isSuccess) {
+                box.className = 'p-4 rounded-xl border border-emerald-500/60 bg-emerald-950/70 text-emerald-100 transition-all';
+                icon.textContent = '✅';
+                title.textContent = `完美决策！推荐操作：${actInfo.title}`;
+            } else {
+                box.className = 'p-4 rounded-xl border border-red-500/60 bg-red-950/70 text-red-100 transition-all';
+                icon.textContent = '❌';
+                title.textContent = `遗憾答错！正确决策是：${actInfo.title}`;
+            }
+
+            const rationale = generateRationale(
+                currentTrainerRound.parsed.type, 
+                currentTrainerRound.parsed.key, 
+                dealer, 
+                expectedCode
+            );
+            body.textContent = rationale;
+        }
+
+        // Global hotkey support
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                const trainerView = document.getElementById('view-trainer');
+                if (!trainerView.classList.contains('hidden')) {
+                    e.preventDefault();
+                    nextTrainerRound();
+                }
+            }
+        });
+
+        function switchMainTab(tab) {
+            const vAdvisor = document.getElementById('view-advisor');
+            const vTrainer = document.getElementById('view-trainer');
+            const vChart = document.getElementById('view-chart');
+
+            const bAdvisor = document.getElementById('tab-advisor-btn');
+            const bTrainer = document.getElementById('tab-trainer-btn');
+            const bChart = document.getElementById('tab-chart-btn');
+
+            [vAdvisor, vTrainer, vChart].forEach(v => v.classList.add('hidden'));
+            [bAdvisor, bTrainer, bChart].forEach(b => {
+                b.className = 'px-3.5 py-1.5 rounded-lg text-slate-400 hover:text-white transition-all flex items-center gap-1.5';
+            });
+
+            if (tab === 'advisor') {
+                vAdvisor.classList.remove('hidden');
+                bAdvisor.className = 'px-3.5 py-1.5 rounded-lg bg-emerald-700 text-white shadow transition-all flex items-center gap-1.5';
+            } else if (tab === 'trainer') {
+                vTrainer.classList.remove('hidden');
+                bTrainer.className = 'px-3.5 py-1.5 rounded-lg bg-emerald-700 text-white shadow transition-all flex items-center gap-1.5';
+            } else if (tab === 'chart') {
+                vChart.classList.remove('hidden');
+                bChart.className = 'px-3.5 py-1.5 rounded-lg bg-emerald-700 text-white shadow transition-all flex items-center gap-1.5';
+                highlightCurrentCell();
+            }
+        }
+
+        // Initialize on load
+        window.onload = () => {
+            initApp();
+        };
+    </script>
+</body>
+</html>
