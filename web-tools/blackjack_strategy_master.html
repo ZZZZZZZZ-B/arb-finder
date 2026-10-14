@@ -125,13 +125,18 @@
                 </span>
             </div>
             <div class="flex flex-wrap items-center gap-4">
+                <!-- Game mode -->
+                <div class="flex bg-slate-900/90 p-0.5 rounded-lg border border-slate-700/60 text-xs font-semibold">
+                    <button type="button" id="mode-standard-btn" onclick="setGameMode('blackjack')" class="px-3 py-1.5 rounded-md bg-emerald-700 text-white transition">标准 21 点</button>
+                    <button type="button" id="mode-spanish-btn" onclick="setGameMode('spanish21')" class="px-3 py-1.5 rounded-md text-slate-400 hover:text-white transition">Spanish 21</button>
+                </div>
                 <!-- S17 / H17 Toggle -->
                 <label class="flex items-center gap-2 cursor-pointer bg-slate-900/90 hover:bg-slate-800/90 px-3 py-1.5 rounded-lg border border-slate-700/60 transition">
                     <input type="checkbox" id="rule-s17" onchange="updateRuleSettings()" class="rounded border-slate-700 text-emerald-600 focus:ring-0">
                     <span class="text-slate-300">庄家软17要牌 (<strong id="rule-s17-label" class="text-emerald-400 font-mono">S17 停牌</strong>)</span>
                 </label>
                 <!-- DAS Toggle -->
-                <label class="flex items-center gap-2 cursor-pointer bg-slate-900/90 hover:bg-slate-800/90 px-3 py-1.5 rounded-lg border border-slate-700/60 transition">
+                <label id="rule-das-label" class="flex items-center gap-2 cursor-pointer bg-slate-900/90 hover:bg-slate-800/90 px-3 py-1.5 rounded-lg border border-slate-700/60 transition">
                     <input type="checkbox" id="rule-das" checked onchange="updateRuleSettings()" class="rounded border-slate-700 text-emerald-600 focus:ring-0">
                     <span class="text-slate-300">分牌后允许Double (<strong class="text-emerald-400 font-mono">DAS</strong>)</span>
                 </label>
@@ -139,6 +144,11 @@
                 <label class="flex items-center gap-2 cursor-pointer bg-slate-900/90 hover:bg-slate-800/90 px-3 py-1.5 rounded-lg border border-slate-700/60 transition">
                     <input type="checkbox" id="rule-surrender" checked onchange="updateRuleSettings()" class="rounded border-slate-700 text-emerald-600 focus:ring-0">
                     <span class="text-slate-300">允许投降 (<strong class="text-purple-400 font-mono">Surrender</strong>)</span>
+                </label>
+                <!-- Redouble (Spanish 21 only) -->
+                <label id="rule-redouble-label" class="hidden flex items-center gap-2 cursor-pointer bg-slate-900/90 hover:bg-slate-800/90 px-3 py-1.5 rounded-lg border border-slate-700/60 transition">
+                    <input type="checkbox" id="rule-redouble" disabled onchange="updateRuleSettings()" class="rounded border-slate-700 text-emerald-600 focus:ring-0">
+                    <span class="text-slate-300">允许重加倍 (<strong class="text-blue-400 font-mono">Redouble</strong>)<span id="rule-redouble-hint" class="ml-1 text-[11px] text-slate-500">(H17 Only)</span></span>
                 </label>
             </div>
         </div>
@@ -221,6 +231,33 @@
                         </div>
                     </div>
 
+                    <!-- Spanish 21 options: doubled state, preset card count, suit context -->
+                    <div id="spanish-hand-options" class="hidden space-y-3 rounded-xl border border-amber-900/40 bg-black/20 p-3">
+                        <div class="flex flex-wrap items-center gap-3">
+                            <label class="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
+                                <input type="checkbox" id="hand-doubled" onchange="setDoubled()" class="rounded border-slate-700 text-emerald-600 focus:ring-0">
+                                <span>已加倍 (Doubled)</span>
+                            </label>
+                            <span id="doubled-hint" class="text-[11px] text-slate-500"></span>
+                        </div>
+                        <div id="preset-cardcount-group" class="hidden">
+                            <div class="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                                <span>牌张数：</span>
+                                <div id="preset-cardcount-chips" class="flex flex-wrap gap-1.5"></div>
+                            </div>
+                        </div>
+                        <div id="suit-context-group" class="hidden">
+                            <div class="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                                <span>起手两张牌花色：</span>
+                                <div class="flex bg-slate-800/80 p-0.5 rounded-lg">
+                                    <button type="button" id="suit-mixed-btn" onclick="setSuitContext('mixed')" class="px-2.5 py-1 rounded-md bg-emerald-600 text-white font-medium transition">不同花</button>
+                                    <button type="button" id="suit-suited-btn" onclick="setSuitContext('suited')" class="px-2.5 py-1 rounded-md text-slate-400 hover:text-white font-medium transition">同花</button>
+                                    <button type="button" id="suit-spades-btn" onclick="setSuitContext('spades')" class="px-2.5 py-1 rounded-md text-slate-400 hover:text-white font-medium transition">同为黑桃</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Current State Summary Badge -->
                     <div class="bg-gradient-to-r from-emerald-950/60 to-slate-900 border border-emerald-800/40 rounded-xl p-3 flex items-center justify-between">
                         <div class="flex items-center gap-3">
@@ -295,6 +332,7 @@
                             <span>🎯</span> 策略实战盲测 (STRATEGY TRAINER)
                         </h2>
                         <p class="text-xs text-slate-400 mt-1">随机发牌，测试你的第一反应与肌肉记忆</p>
+                        <p id="trainer-mode-note" class="hidden text-[11px] text-amber-400/80 mt-1">实战测验仍使用标准 21 点策略与 52 张牌，不受 Spanish 21 模式影响。</p>
                     </div>
 
                     <div class="flex items-center gap-4 bg-black/40 px-4 py-2 rounded-xl border border-slate-800 font-mono text-xs">
@@ -393,11 +431,11 @@
                         <h2 class="text-xl font-bold font-serif tracking-wider text-slate-100 flex items-center gap-2">
                             <span>📊</span> 完整基本策略对照矩阵 (BASIC STRATEGY CHART)
                         </h2>
-                        <p class="text-xs text-slate-400 mt-1">4-8副牌 · 动态适应当前 S17/H17 与 DAS 规则</p>
+                        <p id="chart-subtitle" class="text-xs text-slate-400 mt-1">4-8副牌 · 动态适应当前 S17/H17 与 DAS 规则</p>
                     </div>
 
                     <!-- Legend -->
-                    <div class="flex flex-wrap items-center gap-2 text-xs font-mono">
+                    <div id="chart-legend" class="flex flex-wrap items-center gap-2 text-xs font-mono">
                         <span class="px-2.5 py-1 rounded bg-emerald-700 text-white font-bold">H: Hit 要牌</span>
                         <span class="px-2.5 py-1 rounded bg-red-700 text-white font-bold">S: Stand 停牌</span>
                         <span class="px-2.5 py-1 rounded bg-blue-700 text-white font-bold">D: Double 加倍</span>
@@ -411,6 +449,8 @@
                     <button onclick="renderChartSection('hard')" id="chart-tab-hard" class="px-4 py-2 border-b-2 border-emerald-500 font-bold text-sm text-emerald-400">硬点数 (Hard 8-17+)</button>
                     <button onclick="renderChartSection('soft')" id="chart-tab-soft" class="px-4 py-2 border-b-2 border-transparent font-medium text-sm text-slate-400 hover:text-white">软点数 (Soft 13-20)</button>
                     <button onclick="renderChartSection('pairs')" id="chart-tab-pairs" class="px-4 py-2 border-b-2 border-transparent font-medium text-sm text-slate-400 hover:text-white">对子分牌 (Pairs 2,2-A,A)</button>
+                    <button onclick="renderChartSection('doubledHard')" id="chart-tab-doubledHard" class="hidden px-4 py-2 border-b-2 border-transparent font-medium text-sm text-slate-400 hover:text-white">已加倍 · 硬点数</button>
+                    <button onclick="renderChartSection('doubledSoft')" id="chart-tab-doubledSoft" class="hidden px-4 py-2 border-b-2 border-transparent font-medium text-sm text-slate-400 hover:text-white">已加倍 · 软点数</button>
                 </div>
 
                 <!-- Matrix Table Wrapper -->
@@ -430,6 +470,7 @@
 
     <footer class="mt-auto border-t border-slate-900 bg-black/50 py-4 text-center text-xs text-slate-500">
         <p>Blackjack Basic Strategy Advisor · 基于统计学期望值 (EV) 最优策略编制 · 祝你在牌桌无往不利</p>
+        <p id="footer-spanish-note" class="hidden mt-1 px-4">Spanish 21 策略来自 Wizard of Odds（六副牌）。未建模：奖励赔付对 EV 的影响（仅作为表中例外）、Super Bonus、拆牌后各手牌上下文、八副牌差异、分 A 后不可补牌等变种、保险与边注。</p>
     </footer>
 
     <script>
@@ -442,9 +483,11 @@
 
         // Rules configuration
         const rules = {
+            game: 'blackjack', // 'blackjack' | 'spanish21'
             s17: true,       // true: Dealer stands on soft 17 (S17); false: Dealer hits on soft 17 (H17)
             das: true,       // Double After Split allowed
-            surrender: true  // Late Surrender allowed
+            surrender: true, // Late Surrender allowed
+            redouble: false  // Spanish 21 only; the published redouble tables are H17-only
         };
 
         // Current Hand State
@@ -453,7 +496,10 @@
             playerCards: ['10', '6'],
             inputMode: 'cards', // 'cards' | 'preset'
             presetType: 'hard',  // 'hard' | 'soft' | 'pairs'
-            presetValue: '16'
+            presetValue: '16',
+            doubled: false,         // Spanish 21 only
+            presetCardCount: 2,     // Spanish 21 preset mode only (6 means 6+)
+            suitContext: 'mixed'    // Spanish 21 only: 'mixed' | 'suited' | 'spades'
         };
 
         // Strategy Matrix Definitions
@@ -506,6 +552,9 @@
             'P': { title: '分牌 (SPLIT)', bg: 'bg-amber-600', border: 'border-amber-500', glow: 'glow-split', text: 'text-amber-100', sub: 'SPLIT - 拆分为两手独立牌局' },
             'Rh': { title: '投降 (SURRENDER)', bg: 'bg-purple-700', border: 'border-purple-500', glow: 'glow-surrender', text: 'text-purple-100', sub: 'SURRENDER - 放弃一半注码，若不允许则要牌' },
             'Rs': { title: '投降 / 停牌', bg: 'bg-purple-700', border: 'border-purple-500', glow: 'glow-surrender', text: 'text-purple-100', sub: '投降，若不允许投降则停牌' },
+            'Rp': { title: '投降 / 分牌', bg: 'bg-purple-700', border: 'border-purple-500', glow: 'glow-surrender', text: 'text-purple-100', sub: '投降；若不允许投降则分牌' },
+            'DD': { title: '重加倍 (REDOUBLE)', bg: 'bg-blue-600', border: 'border-blue-500', glow: 'glow-double', text: 'text-blue-100', sub: 'REDOUBLE - 已加倍后再次加倍，只拿一张牌' },
+            'RR': { title: '加倍后投降 (RESCUE)', bg: 'bg-purple-700', border: 'border-purple-500', glow: 'glow-surrender', text: 'text-purple-100', sub: 'DOUBLE-DOWN RESCUE - 放弃相当于原始下注的金额' },
             'INCOMPLETE': { title: '请继续选牌', bg: 'bg-slate-700', border: 'border-slate-500', glow: '', text: 'text-slate-100', sub: '至少需要两张手牌才能查询策略' },
             'BUST': { title: '已爆牌', bg: 'bg-red-900', border: 'border-red-600', glow: '', text: 'text-red-100', sub: '手牌点数超过 21，本局无法继续要牌' }
         };
@@ -543,6 +592,568 @@
             }
 
             return action;
+        }
+
+        /* ============================================================
+           SPANISH 21 MODE - Wizard of Odds basic strategy (six decks)
+           ============================================================ */
+        const SP_H = 'H H H H H H H H H H';
+        const SP_S = 'S S S S S S S S S S';
+
+        // Columns follow DEALER_CARDS; hard/soft rows may span a total range.
+        function spanishRows(spec) {
+            return spec.map(([label, cells]) => {
+                const row = { label, cells: cells.split(' ') };
+                const range = /^(\d+)-(\d+)$/.exec(label);
+                const plus = /^(\d+)\+$/.exec(label);
+                if (range) { row.from = Number(range[1]); row.to = Number(range[2]); }
+                else if (plus) { row.from = Number(plus[1]); row.to = 21; }
+                else if (/^\d+$/.test(label)) { row.from = row.to = Number(label); }
+                return row;
+            });
+        }
+
+        const SP_PAIRS_HEAD = [
+            ['2,2', 'P P P P P P P H H H'],
+            ['3,3', 'P P P P P P P H H H'],
+            ['6,6', 'H H P P P H H H H H'],
+            ['7,7', 'P P P P P P$ H H H H']
+        ];
+        const SP_PAIRS_TAIL = [
+            ['9,9', 'S P P P P S P P S S'],
+            ['A,A', 'P P P P P P P P P P']
+        ];
+        const SP_H17_PAIRS = spanishRows([...SP_PAIRS_HEAD, ['8,8', 'P P P P P P P P P R'], ...SP_PAIRS_TAIL]);
+
+        const SPANISH_TABLES = {
+            s17: {
+                hard: spanishRows([
+                    ['4-8', SP_H],
+                    ['9', 'H H H H D4 H H H H H'],
+                    ['10', 'D5 D5 D D D D4 D3 H H H'],
+                    ['11', 'D4 D5 D5 D5 D5 D4 D4 D4 D3 D3'],
+                    ['12', SP_H],
+                    ['13', SP_H],
+                    ['14', `H H S4* S5* S4* H H H H H`],
+                    ['15', `S4* S5* S5" S6 S6" H H H H H`],
+                    ['16', 'S5 S6 S6 S S H H H H H'],
+                    ['17', 'S S S S S S S6 S6 S6 RH'],
+                    ['18-21', SP_S]
+                ]),
+                soft: spanishRows([
+                    ['12-15', SP_H],
+                    ['16', 'H H H H D4 H H H H H'],
+                    ['17', 'H H D3 D4 D5 H H H H H'],
+                    ['18', 'S4 S4 D4 D5 D5 S6 S4 H H H'],
+                    ['19-21', 'S S S S S S S S S6 S']
+                ]),
+                pairs: spanishRows([...SP_PAIRS_HEAD, ['8,8', 'P P P P P P P P P P'], ...SP_PAIRS_TAIL])
+            },
+            h17: {
+                hard: spanishRows([
+                    ['4-8', SP_H],
+                    ['9', 'H H H H D H H H H H'],
+                    ['10', 'D5 D5 D D D D4 D3 H H H'],
+                    ['11', 'D4 D5 D5 D5 D5 D4 D4 D4 D3 D3'],
+                    ['12', SP_H],
+                    ['13', `H H H H S4* H H H H H`],
+                    ['14', `H H S4* S5' S6" H H H H H`],
+                    ['15', `S4* S5' S6 S6 S H H H H H`],
+                    ['16', 'S6 S6 S6 S S H H H H RH'],
+                    ['17', 'S S S S S S S6 S6 S6 RH'],
+                    ['18-21', SP_S]
+                ]),
+                soft: spanishRows([
+                    ['12-14', SP_H],
+                    ['15', 'H H H H D4 H H H H H'],
+                    ['16', 'H H H D3 D4 H H H H H'],
+                    ['17', 'H H D3 D4 D5 H H H H H'],
+                    ['18', 'S4 S4 D4 D5 D6 S6 S4 H H H'],
+                    ['19', 'S S S S S S S S S6 S6'],
+                    ['20-21', SP_S]
+                ]),
+                pairs: SP_H17_PAIRS
+            },
+            dd1: {
+                hard: spanishRows([
+                    ['4', SP_H],
+                    ['5', 'H H H H D H H H H H'],
+                    ['6', 'H H H H D H H H H H'],
+                    ['7', 'H H H H D H H H H H'],
+                    ['8', 'H H H D D H H H H H'],
+                    ['9', 'H D4 D D D H H H H H'],
+                    ['10', 'D5 D5 D D D D D5 H H H'],
+                    ['11', 'D4 D5 D5 D5 D5 D5 D5 D4 D3 D3'],
+                    ['12', SP_H],
+                    ['13', `H H H H S4* H H H H H`],
+                    ['14', `H H S4* S5' S6" H H H H H`],
+                    ['15', `S4* S5' S6 S6 S H H H H H`],
+                    ['16', 'S6 S6 S6 S S H H H H RH'],
+                    ['17', 'S S S S S S6 S6 S6 S6 RH'],
+                    ['18-21', SP_S]
+                ]),
+                soft: spanishRows([
+                    ['12', SP_H],
+                    ['13', 'H D3 D D D H H H H H'],
+                    ['14', 'H D3 D4 D D H H H H H'],
+                    ['15', 'H H D4 D4 D5 H H H H H'],
+                    ['16', 'H H D3 D4 D5 H H H H H'],
+                    ['17', 'H H D3 D4 D5 H H H H H'],
+                    ['18', 'S4 S4 D4 D5 D6 S6 S4 H H H'],
+                    ['19', 'S S S S S S S S S6 S6'],
+                    ['20-21', SP_S]
+                ]),
+                pairs: SP_H17_PAIRS
+            },
+            // Already doubled, redouble allowed (H17 only).
+            dd2: {
+                hard: spanishRows([
+                    ['6', 'S D D D D D R R R R'],
+                    ['7', 'D D D D D D R R R R'],
+                    ['8', 'D D D D D D D D R R'],
+                    ['9', 'D D D D D D D D D D'],
+                    ['10', 'D D D D D D D D D D'],
+                    ['11', 'D D D D D D D D D D'],
+                    ['12', 'S S S S S D D R R R'],
+                    ['13', 'S S S S S S R R R R'],
+                    ['14', 'S S S S S S R R R R'],
+                    ['15', 'S S S S S S R R R R'],
+                    ['16', 'S S S S S S R R R R'],
+                    ['17', 'S S S S S S S S S R'],
+                    ['18-21', SP_S]
+                ]),
+                soft: spanishRows([
+                    ['13-17', 'D D D D D D D D D D'],
+                    ['18', 'S S D D D S S S S S'],
+                    ['19-21', SP_S]
+                ])
+            },
+            // Already doubled, no redouble: table footnote (rescue hard 12-16 vs 8-A and 17 vs A, otherwise stand).
+            rescue: {
+                hard: spanishRows([
+                    ['4-11', SP_S],
+                    ['12-16', 'S S S S S S R R R R'],
+                    ['17', 'S S S S S S S S S R'],
+                    ['18-21', SP_S]
+                ]),
+                soft: spanishRows([['12-21', SP_S]])
+            }
+        };
+
+        function dealerDisplay(card) {
+            return rules.game === 'spanish21' && card === '10' ? 'J/Q/K' : card;
+        }
+
+        function selectSpanishTable(doubled) {
+            if (doubled) {
+                return rules.redouble
+                    ? { key: 'dd2', short: '已加倍', name: '已加倍 · H17 可重加倍' }
+                    : { key: 'rescue', short: '已加倍', name: '已加倍 · 加倍后投降规则（表格脚注）' };
+            }
+            if (rules.redouble) return { key: 'dd1', short: 'H17+重加倍', name: 'H17 · 可重加倍' };
+            return rules.s17
+                ? { key: 's17', short: 'S17', name: 'S17（庄家软17停牌）' }
+                : { key: 'h17', short: 'H17', name: 'H17（庄家软17要牌）' };
+        }
+
+        function spanishChartSource(section) {
+            const doubled = section === 'doubledHard' || section === 'doubledSoft';
+            const group = section === 'doubledHard' ? 'hard' : section === 'doubledSoft' ? 'soft' : section;
+            const table = selectSpanishTable(doubled);
+            return { doubled, group, table, rows: SPANISH_TABLES[table.key][group] };
+        }
+
+        function spanishPresetRows() {
+            const table = selectSpanishTable(currentHandState.doubled);
+            return SPANISH_TABLES[table.key][currentHandState.presetType];
+        }
+
+        function ensureSpanishPresetValue() {
+            if (currentHandState.doubled && currentHandState.presetType === 'pairs') currentHandState.presetType = 'hard';
+            const rows = spanishPresetRows();
+            if (!rows.some(r => r.label === currentHandState.presetValue)) {
+                const target = currentHandState.presetType === 'hard' ? 16 : currentHandState.presetType === 'soft' ? 18 : null;
+                const row = target === null ? rows.find(r => r.label === '8,8') : rows.find(r => target >= r.from && target <= r.to);
+                currentHandState.presetValue = (row || rows[0]).label;
+            }
+        }
+
+        // Aces count 11 only while the hand stays at 21 or below.
+        function parseSpanishHand(cards) {
+            const cardCount = cards.length;
+            if (cardCount < 2) return { type: 'incomplete', cardCount, total: cardCount ? cardNumericVal(cards[0]) : 0 };
+            let total = cards.reduce((sum, c) => sum + (c === 'A' ? 1 : cardNumericVal(c)), 0);
+            const hasAce = cards.includes('A');
+            const soft = hasAce && total + 10 <= 21;
+            if (soft) total += 10;
+            if (total > 21) return { type: 'bust', cardCount, total, soft: false, aceValue: hasAce ? 1 : null };
+            const tenish = (c) => ['10', 'J', 'Q', 'K'].includes(c) ? '10' : c;
+            const isPair = cardCount === 2 && tenish(cards[0]) === tenish(cards[1]);
+            return {
+                type: soft ? 'soft' : 'hard', cardCount, total, soft,
+                aceValue: hasAce ? (soft ? 11 : 1) : null,
+                isPair, pairKey: isPair ? `${tenish(cards[0])},${tenish(cards[0])}` : null,
+                ranks: cards.slice()
+            };
+        }
+
+        function lookupSpanishCell(hand, dealerCard, doubled) {
+            const idx = DEALER_CARDS.indexOf(dealerCard);
+            const table = selectSpanishTable(doubled);
+            const tables = SPANISH_TABLES[table.key];
+            if (hand.total === 21) return { cell: 'S', rowLabel: '21', group: hand.soft ? 'soft' : 'hard' };
+            let row = null;
+            let group = 'hard';
+            // Pairs of 4s, 5s and 10s are never split, so they fall through to hard rows.
+            if (!doubled && hand.isPair && tables.pairs) {
+                row = tables.pairs.find(r => r.label === hand.pairKey) || null;
+                if (row) group = 'pairs';
+            }
+            if (!row) {
+                group = hand.soft ? 'soft' : 'hard';
+                row = tables[group].find(r => hand.total >= r.from && hand.total <= r.to) || null;
+            }
+            return { cell: row ? row.cells[idx] : 'S', rowLabel: row ? row.label : String(hand.total), group };
+        }
+
+        function parseSpanishCell(cell) {
+            const m = /^(RH|R|H|S|D|P)(\d)?([*'"$])?$/.exec(cell);
+            return { base: m[1], n: m[2] ? Number(m[2]) : 0, mark: m[3] || '' };
+        }
+
+        const SPANISH_MARK_TEXT = {
+            '*': '两张起手牌仍可能凑成 6-7-8 奖励时要牌',
+            "'": '两张起手牌同花（含黑桃）且仍可能凑成 6-7-8 奖励时要牌',
+            '"': '两张起手牌同为黑桃且仍可能凑成 6-7-8 奖励时要牌',
+            '$': '7,7 对庄家 7 且两张 7 同花时要牌而非分牌'
+        };
+
+        function describeSpanishCell(cell) {
+            const { base, n, mark } = parseSpanishCell(cell);
+            const names = { H: '要牌', S: '停牌', D: '加倍', P: '分牌', R: '投降', RH: '投降（不允许则要牌）' };
+            let text = names[base];
+            if (n) text += `；手牌达 ${n} 张及以上改为要牌`;
+            if (mark) text += `；例外：${SPANISH_MARK_TEXT[mark]}`;
+            return text;
+        }
+
+        function spanishCellColor(cell) {
+            const { base } = parseSpanishCell(cell);
+            if (base === 'H') return 'bg-emerald-900/70 text-emerald-200 border-emerald-700/50';
+            if (base === 'S') return 'bg-red-950/70 text-red-200 border-red-800/50';
+            if (base === 'D') return 'bg-blue-900/70 text-blue-200 border-blue-700/50';
+            if (base === 'P') return 'bg-amber-900/70 text-amber-200 border-amber-700/50';
+            return 'bg-purple-900/70 text-purple-200 border-purple-700/50';
+        }
+
+        // Only two distinct ranks from 6/7/8 can still become 6-7-8.
+        function spanishBonusPossible(hand) {
+            return !!hand && hand.cardCount === 2 && hand.ranks.every(r => ['6', '7', '8'].includes(r)) && hand.ranks[0] !== hand.ranks[1];
+        }
+
+        function isSpanishMarkTriggered(mark, hand, suitContext) {
+            if (!mark || !hand || hand.cardCount !== 2) return false;
+            const suited = suitContext === 'suited' || suitContext === 'spades';
+            if (mark === '*') return spanishBonusPossible(hand);
+            if (mark === "'") return spanishBonusPossible(hand) && suited;
+            if (mark === '"') return spanishBonusPossible(hand) && suitContext === 'spades';
+            if (mark === '$') return hand.pairKey === '7,7' && suited;
+            return false;
+        }
+
+        function spanishSuitRelevant(hand, cell, doubled) {
+            if (doubled || hand.cardCount !== 2 || hand.type === 'incomplete') return false;
+            const { mark } = parseSpanishCell(cell);
+            if (mark === "'" || mark === '"') return spanishBonusPossible(hand);
+            if (mark === '$') return hand.pairKey === '7,7';
+            return false;
+        }
+
+        function resolveSpanishCell(cell, ctx) {
+            const { base, n, mark } = parseSpanishCell(cell);
+            const { cardCount, doubled, isPair, hand, suitContext, preset } = ctx;
+            const notes = [];
+            const triggered = !preset && !doubled && isSpanishMarkTriggered(mark, hand, suitContext);
+            if (mark && preset) notes.push(`例外：${SPANISH_MARK_TEXT[mark]}（点数速选无法判断牌面组合，请用逐张选牌）`);
+            const countRule = () => `${cell} 例外：已有 ${cardCount} 张牌（≥${n}），改为要牌`;
+            let action;
+            if (base === 'H') {
+                action = 'H';
+            } else if (base === 'S') {
+                if (n && cardCount >= n) { action = 'H'; notes.push(countRule()); }
+                else if (triggered) { action = 'H'; notes.push(SPANISH_MARK_TEXT[mark]); }
+                else action = 'S';
+            } else if (base === 'D') {
+                if (doubled) action = rules.redouble ? 'DD' : 'S';
+                else if (n && cardCount >= n) { action = 'H'; notes.push(countRule()); }
+                else action = 'D';
+            } else if (base === 'P') {
+                if (triggered) { action = 'H'; notes.push(SPANISH_MARK_TEXT[mark]); }
+                else action = 'P';
+            } else if (base === 'RH') {
+                if (!rules.surrender) { action = 'H'; notes.push('未开启投降，按要牌处理'); }
+                else if (cardCount !== 2 || doubled) { action = 'H'; notes.push('晚投降只能用于前两张牌，改为要牌'); }
+                else action = 'Rh';
+            } else if (doubled) {
+                action = rules.surrender ? 'RR' : 'S';
+                if (!rules.surrender) notes.push('未开启投降，已加倍手牌只能停牌');
+            } else if (!rules.surrender || cardCount !== 2) {
+                action = isPair ? 'P' : 'H';
+                notes.push('无法投降，按分牌处理');
+            } else {
+                action = 'Rp';
+            }
+            return { action, notes };
+        }
+
+        function renderAdvisorOutput({ summary, tag, action, fallback, reason }) {
+            document.getElementById('hand-description-summary').textContent = summary;
+            document.getElementById('hand-tag-badge').textContent = tag;
+            const actionInfo = ACTION_DESCRIPTIONS[action] || ACTION_DESCRIPTIONS['H'];
+            document.getElementById('advisor-action-badge').className = `inline-flex flex-col items-center justify-center w-full py-5 px-6 rounded-2xl border-2 transition-all duration-300 ${actionInfo.bg} ${actionInfo.border} ${actionInfo.text} ${actionInfo.glow}`;
+            document.getElementById('advisor-action-cn').textContent = actionInfo.title;
+            document.getElementById('advisor-action-en').textContent = actionInfo.sub;
+            document.getElementById('advisor-fallback-container').classList.toggle('hidden', !fallback);
+            document.getElementById('advisor-fallback-text').textContent = fallback;
+            document.getElementById('advisor-reason-text').textContent = reason;
+        }
+
+        function syncSpanishControls({ hand, cell, cardCount, doubled, preset }) {
+            const box = document.getElementById('hand-doubled');
+            const needsThree = !preset && cardCount < 3;
+            box.checked = doubled && !needsThree;
+            box.disabled = needsThree;
+            document.getElementById('doubled-hint').textContent = needsThree
+                ? '至少 3 张牌才可能已加倍'
+                : (doubled ? `已加倍：只能停牌 / 投降${rules.redouble ? ' / 重加倍' : ''}` : '');
+            document.getElementById('preset-cardcount-group').classList.toggle('hidden', !preset);
+            if (preset) renderPresetCardCountChips();
+            const suitVisible = !preset && !!hand && !!cell && spanishSuitRelevant(hand, cell, doubled);
+            document.getElementById('suit-context-group').classList.toggle('hidden', !suitVisible);
+            if (suitVisible) {
+                [['mixed', 'suit-mixed-btn'], ['suited', 'suit-suited-btn'], ['spades', 'suit-spades-btn']].forEach(([value, id]) => {
+                    document.getElementById(id).className = `px-2.5 py-1 rounded-md font-medium transition ${currentHandState.suitContext === value ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'}`;
+                });
+            }
+        }
+
+        function renderPresetCardCountChips() {
+            const container = document.getElementById('preset-cardcount-chips');
+            container.innerHTML = '';
+            [2, 3, 4, 5, 6].forEach(n => {
+                const disabled = currentHandState.doubled && n < 3;
+                const selected = currentHandState.presetCardCount === n;
+                const chip = document.createElement('button');
+                chip.type = 'button';
+                chip.disabled = disabled;
+                chip.className = `px-2.5 py-1 rounded-lg text-xs font-mono font-bold border transition ${selected ? 'bg-emerald-600 text-white border-emerald-400' : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'} ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`;
+                chip.textContent = n === 6 ? '6+' : String(n);
+                chip.onclick = () => { currentHandState.presetCardCount = n; updateAdvisor(); };
+                container.appendChild(chip);
+            });
+        }
+
+        function renderSpanishPresetChips() {
+            ensureSpanishPresetValue();
+            const container = document.getElementById('preset-chips-container');
+            container.innerHTML = '';
+            spanishPresetRows().forEach(row => {
+                const selected = currentHandState.presetValue === row.label;
+                const chip = document.createElement('button');
+                chip.className = `px-3 py-1.5 rounded-lg text-xs font-mono font-bold border transition ${selected ? 'bg-emerald-600 text-white border-emerald-400 shadow-md' : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'}`;
+                chip.textContent = currentHandState.presetType === 'soft' ? `软 ${row.label}` : row.label;
+                chip.onclick = () => {
+                    currentHandState.presetValue = row.label;
+                    renderPresetChips();
+                    updateAdvisor();
+                };
+                container.appendChild(chip);
+            });
+        }
+
+        function setDoubled() {
+            currentHandState.doubled = document.getElementById('hand-doubled').checked;
+            if (currentHandState.inputMode !== 'cards' && currentHandState.doubled) {
+                if (currentHandState.presetCardCount < 3) currentHandState.presetCardCount = 3;
+                if (currentHandState.presetType === 'pairs') setPresetCategory('hard');
+            }
+            renderPresetChips();
+            updateAdvisor();
+        }
+
+        function setSuitContext(value) {
+            currentHandState.suitContext = value;
+            updateAdvisor();
+        }
+
+        function updateSpanishAdvisor() {
+            const dealer = currentHandState.dealerCard;
+            const dealerLabel = dealerDisplay(dealer);
+            const idx = DEALER_CARDS.indexOf(dealer);
+            const preset = currentHandState.inputMode !== 'cards';
+            let hand = null;
+            let cardCount;
+            let doubled;
+            let cell;
+            let summary;
+            let tableInfo;
+
+            if (!preset) {
+                const cards = currentHandState.playerCards;
+                hand = parseSpanishHand(cards);
+                cardCount = hand.cardCount;
+                if (cardCount < 3) currentHandState.doubled = false;
+                doubled = currentHandState.doubled;
+                if (hand.type === 'incomplete' || hand.type === 'bust') {
+                    syncSpanishControls({ hand, cell: null, cardCount, doubled, preset });
+                    const isBust = hand.type === 'bust';
+                    renderAdvisorOutput({
+                        summary: isBust ? `${cards.join(' + ')} = 爆牌 ${hand.total} 点 vs 庄家 ${dealerLabel}` : `${cards.length ? cards.join(' + ') : '尚未选牌'} · 至少需要两张牌`,
+                        tag: isBust ? '本局结束' : '未完成手牌',
+                        action: isBust ? 'BUST' : 'INCOMPLETE',
+                        fallback: '',
+                        reason: isBust ? 'A 已按 1 点计算后，手牌仍超过 21 点。' : '请选择两张或更多手牌后查看建议。'
+                    });
+                    return;
+                }
+                tableInfo = selectSpanishTable(doubled);
+                cell = lookupSpanishCell(hand, dealer, doubled).cell;
+                const aceCount = cards.filter(c => c === 'A').length;
+                const aceSummary = aceCount > 0
+                    ? `（${hand.aceValue === 11 ? (aceCount > 1 ? '一张 A 按11点，其余 A 按1点' : 'A 按11点') : 'A 均按1点'}）`
+                    : '';
+                const kind = hand.total === 21 ? '21' : `${hand.isPair ? (hand.soft ? '软对子' : '对子') : (hand.soft ? '软' : '硬')} ${hand.total}`;
+                summary = `${cards.join(' + ')} = ${kind} 点${aceSummary} · ${cardCount} 张${doubled ? ' · 已加倍' : ''} vs 庄家 ${dealerLabel}`;
+            } else {
+                ensureSpanishPresetValue();
+                doubled = currentHandState.doubled;
+                if (doubled && currentHandState.presetCardCount < 3) currentHandState.presetCardCount = 3;
+                cardCount = currentHandState.presetCardCount;
+                tableInfo = selectSpanishTable(doubled);
+                const row = spanishPresetRows().find(r => r.label === currentHandState.presetValue);
+                cell = row.cells[idx];
+                const group = { hard: '硬', soft: '软', pairs: '对子' }[currentHandState.presetType];
+                summary = `${group} ${row.label} · ${cardCount >= 6 ? '6+' : cardCount} 张${doubled ? ' · 已加倍' : ''} vs 庄家 ${dealerLabel}`;
+            }
+
+            const resolved = resolveSpanishCell(cell, {
+                cardCount, doubled, hand, preset,
+                isPair: preset ? currentHandState.presetType === 'pairs' : hand.isPair,
+                suitContext: currentHandState.suitContext
+            });
+            syncSpanishControls({ hand, cell, cardCount, doubled, preset });
+
+            const defaults = {
+                Rh: '晚投降仅限前两张牌；若不提供投降则要牌。',
+                Rp: '若不提供投降则分牌。',
+                RR: '加倍后投降：放弃相当于原始下注的金额，保留加倍部分。',
+                DD: '重加倍需要赌场允许（已在规则中开启）。'
+            };
+            const fallback = [defaults[resolved.action], ...resolved.notes].filter(Boolean).join('；');
+            const reason = hand && hand.total === 21
+                ? '玩家 21 点在 Spanish 21 中必赢，直接停牌。'
+                : `依据 Wizard of Odds 的 Spanish 21 基本策略（${tableInfo.name}，六副牌）：格子「${cell}」= ${describeSpanishCell(cell)}。${doubled ? '已加倍手牌只能停牌、投降或（若允许）重加倍，且不享受 6-7-8 等奖励。' : ''}`;
+
+            renderAdvisorOutput({ summary, tag: `Spanish 21 · ${tableInfo.short}`, action: resolved.action, fallback, reason });
+        }
+
+        let standardChartLegend = null;
+
+        function syncChartLegend() {
+            const legend = document.getElementById('chart-legend');
+            const subtitle = document.getElementById('chart-subtitle');
+            if (standardChartLegend === null) standardChartLegend = { legend: legend.innerHTML, subtitle: subtitle.textContent };
+            if (rules.game !== 'spanish21') {
+                legend.innerHTML = standardChartLegend.legend;
+                subtitle.textContent = standardChartLegend.subtitle;
+                return;
+            }
+            const chip = (cls, text) => `<span class="px-2.5 py-1 rounded ${cls} font-bold">${text}</span>`;
+            legend.innerHTML = [
+                chip('bg-emerald-700 text-white', 'H 要牌'),
+                chip('bg-red-700 text-white', 'S 停牌'),
+                chip('bg-blue-700 text-white', 'D 加倍'),
+                chip('bg-amber-600 text-white', 'P 分牌'),
+                chip('bg-purple-800 text-white', 'R / RH 投降（RH 否则要牌）'),
+                chip('bg-slate-700 text-slate-100', 'Sn / Dn：n 张及以上改为要牌'),
+                chip('bg-slate-700 text-slate-100', `* ' " $：6-7-8 / 同花 7 例外`)
+            ].join('');
+        }
+
+        function renderSpanishChart(section) {
+            const src = spanishChartSource(section);
+            document.getElementById('chart-subtitle').textContent = `Spanish 21 · Wizard of Odds（六副牌）· 当前表：${src.table.name}`;
+            const table = document.getElementById('strategy-table');
+            table.innerHTML = '';
+
+            const thead = document.createElement('thead');
+            thead.className = 'bg-slate-950 text-slate-400 border-b border-slate-800';
+            let headRow = `<tr><th class="py-2.5 px-3 text-left">手牌 \\ 庄家</th>`;
+            DEALER_CARDS.forEach(d => { headRow += `<th class="py-2.5 px-2">${dealerDisplay(d)}</th>`; });
+            thead.innerHTML = headRow + '</tr>';
+            table.appendChild(thead);
+
+            const tbody = document.createElement('tbody');
+            tbody.className = 'divide-y divide-slate-800/60';
+            src.rows.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-800/40 transition';
+                const rowName = src.group === 'soft' ? `软 ${row.label}` : row.label;
+                let rowHtml = `<td class="py-2 px-3 text-left font-bold text-slate-200 bg-slate-900/60">${rowName}</td>`;
+                DEALER_CARDS.forEach((d, i) => {
+                    const cell = row.cells[i];
+                    const cellId = `cell-${section}-${row.label.replace(',', '_')}-${d}`;
+                    rowHtml += `<td class="p-1"><button id="${cellId}" title="${describeSpanishCell(cell)}" onclick="loadFromChartCell('${section}', '${row.label}', '${d}')" class="w-full py-1.5 rounded text-xs font-bold border transition active:scale-90 ${spanishCellColor(cell)}">${cell}</button></td>`;
+                });
+                tr.innerHTML = rowHtml;
+                tbody.appendChild(tr);
+            });
+            table.appendChild(tbody);
+            highlightCurrentCell();
+        }
+
+        function highlightSpanishCell() {
+            let section;
+            let label;
+            if (currentHandState.inputMode === 'cards') {
+                const hand = parseSpanishHand(currentHandState.playerCards);
+                if (hand.type === 'incomplete' || hand.type === 'bust') return;
+                const doubled = currentHandState.doubled && hand.cardCount >= 3;
+                const found = lookupSpanishCell(hand, currentHandState.dealerCard, doubled);
+                section = doubled ? (hand.soft ? 'doubledSoft' : 'doubledHard') : found.group;
+                label = found.rowLabel;
+            } else {
+                const type = currentHandState.presetType;
+                section = currentHandState.doubled ? (type === 'soft' ? 'doubledSoft' : 'doubledHard') : type;
+                label = currentHandState.presetValue;
+            }
+            if (section !== currentChartSection) return;
+            const target = document.getElementById(`cell-${section}-${label.replace(',', '_')}-${currentHandState.dealerCard}`);
+            if (target) target.classList.add('cell-highlight');
+        }
+
+        function setGameMode(mode) {
+            if (rules.game === mode) return;
+            rules.game = mode;
+            const spanish = mode === 'spanish21';
+            document.getElementById('mode-standard-btn').className = `px-3 py-1.5 rounded-md transition ${spanish ? 'text-slate-400 hover:text-white' : 'bg-emerald-700 text-white'}`;
+            document.getElementById('mode-spanish-btn').className = `px-3 py-1.5 rounded-md transition ${spanish ? 'bg-emerald-700 text-white' : 'text-slate-400 hover:text-white'}`;
+            document.getElementById('rule-das-label').classList.toggle('hidden', spanish);
+            document.getElementById('rule-redouble-label').classList.toggle('hidden', !spanish);
+            document.getElementById('spanish-hand-options').classList.toggle('hidden', !spanish);
+            document.getElementById('trainer-mode-note').classList.toggle('hidden', !spanish);
+            document.getElementById('footer-spanish-note').classList.toggle('hidden', !spanish);
+
+            currentHandState.doubled = false;
+            currentHandState.suitContext = 'mixed';
+            currentHandState.presetCardCount = 2;
+            currentHandState.playerCards = currentHandState.playerCards.map(c => (spanish && c === '10') ? 'J' : c);
+
+            renderDealerButtons();
+            renderPlayerKeypad();
+            renderSelectedCards();
+            setPresetCategory('hard');
+            updateRuleSettings();
         }
 
         // Classify a hand, valuing aces as 11 when the hand can safely keep that value.
@@ -611,7 +1222,7 @@
                         ? 'bg-gold-500 text-slate-950 border-gold-400 shadow-lg scale-105 ring-2 ring-gold-400/50' 
                         : 'bg-slate-800/90 hover:bg-slate-700 text-slate-200 border-slate-700'
                 }`;
-                btn.textContent = card;
+                btn.textContent = dealerDisplay(card);
                 btn.onclick = () => {
                     currentHandState.dealerCard = card;
                     renderDealerButtons();
@@ -619,12 +1230,12 @@
                 };
                 container.appendChild(btn);
             });
-            document.getElementById('dealer-selected-label').textContent = `当前：${currentHandState.dealerCard}`;
+            document.getElementById('dealer-selected-label').textContent = `当前：${dealerDisplay(currentHandState.dealerCard)}`;
         }
 
         // Render Player Keypad
         function renderPlayerKeypad() {
-            const keys = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+            const keys = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'].filter(k => !(rules.game === 'spanish21' && k === '10'));
             const container = document.getElementById('player-card-keypad');
             container.innerHTML = '';
             keys.forEach(k => {
@@ -654,17 +1265,20 @@
 
         function addCardToHand(card) {
             currentHandState.playerCards.push(card);
+            currentHandState.suitContext = 'mixed';
             renderSelectedCards();
             updateAdvisor();
         }
 
         function removeCardFromHand(index) {
             currentHandState.playerCards.splice(index, 1);
+            currentHandState.suitContext = 'mixed';
             renderSelectedCards();
             updateAdvisor();
         }
 
         function renderPresetChips() {
+            if (rules.game === 'spanish21') { renderSpanishPresetChips(); return; }
             const container = document.getElementById('preset-chips-container');
             container.innerHTML = '';
             const type = currentHandState.presetType;
@@ -730,11 +1344,20 @@
             if (cat === 'soft') currentHandState.presetValue = 'A,7';
             if (cat === 'pairs') currentHandState.presetValue = '8,8';
 
+            if (rules.game === 'spanish21') {
+                if (cat === 'pairs') currentHandState.doubled = false;
+                ensureSpanishPresetValue();
+            }
+
             renderPresetChips();
             updateAdvisor();
         }
 
         function updateAdvisor() {
+            if (rules.game === 'spanish21') {
+                updateSpanishAdvisor();
+                return;
+            }
             let handInfo;
             if (currentHandState.inputMode === 'cards') {
                 handInfo = parseCards(currentHandState.playerCards);
@@ -850,25 +1473,37 @@
             rules.das = document.getElementById('rule-das').checked;
             rules.surrender = document.getElementById('rule-surrender').checked;
 
+            const redoubleBox = document.getElementById('rule-redouble');
+            if (rules.s17) redoubleBox.checked = false;
+            redoubleBox.disabled = rules.s17;
+            document.getElementById('rule-redouble-label').classList.toggle('opacity-60', rules.s17);
+            document.getElementById('rule-redouble-hint').classList.toggle('hidden', !rules.s17);
+            rules.redouble = rules.game === 'spanish21' && !rules.s17 && redoubleBox.checked;
+
             document.getElementById('rule-s17-label').textContent = rules.s17 ? 'S17 停牌' : 'H17 要牌';
             document.getElementById('rule-s17-label').className = rules.s17 ? 'text-emerald-400 font-mono' : 'text-amber-400 font-mono';
 
+            if (rules.game === 'spanish21') renderPresetChips();
             updateAdvisor();
             renderChartSection(currentChartSection);
         }
 
         function resetHand() {
             currentHandState.dealerCard = '6';
-            currentHandState.playerCards = ['10', '6'];
+            currentHandState.playerCards = [rules.game === 'spanish21' ? 'J' : '10', '6'];
+            currentHandState.doubled = false;
+            currentHandState.suitContext = 'mixed';
             renderDealerButtons();
             renderSelectedCards();
             updateAdvisor();
         }
 
         function randomizeHand() {
-            const pool = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+            const pool = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'].filter(c => !(rules.game === 'spanish21' && c === '10'));
             currentHandState.dealerCard = DEALER_CARDS[Math.floor(Math.random() * DEALER_CARDS.length)];
             currentHandState.playerCards = [pool[Math.floor(Math.random() * pool.length)], pool[Math.floor(Math.random() * pool.length)]];
+            currentHandState.doubled = false;
+            currentHandState.suitContext = 'mixed';
             renderDealerButtons();
             renderSelectedCards();
             updateAdvisor();
@@ -877,15 +1512,19 @@
         let currentChartSection = 'hard';
 
         function renderChartSection(section) {
+            if (rules.game !== 'spanish21' && section.startsWith('doubled')) section = 'hard';
             currentChartSection = section;
-            ['hard', 'soft', 'pairs'].forEach(s => {
+            ['hard', 'soft', 'pairs', 'doubledHard', 'doubledSoft'].forEach(s => {
                 const btn = document.getElementById(`chart-tab-${s}`);
                 if (s === section) {
                     btn.className = 'px-4 py-2 border-b-2 border-emerald-500 font-bold text-sm text-emerald-400';
                 } else {
                     btn.className = 'px-4 py-2 border-b-2 border-transparent font-medium text-sm text-slate-400 hover:text-white';
                 }
+                btn.classList.toggle('hidden', s.startsWith('doubled') && rules.game !== 'spanish21');
             });
+            syncChartLegend();
+            if (rules.game === 'spanish21') { renderSpanishChart(section); return; }
 
             const table = document.getElementById('strategy-table');
             table.innerHTML = '';
@@ -945,6 +1584,7 @@
         function highlightCurrentCell() {
             // Remove past highlights
             document.querySelectorAll('.cell-highlight').forEach(el => el.classList.remove('cell-highlight'));
+            if (rules.game === 'spanish21') { highlightSpanishCell(); return; }
 
             let handInfo = (currentHandState.inputMode === 'cards')
                 ? parseCards(currentHandState.playerCards)
@@ -962,12 +1602,21 @@
         function loadFromChartCell(section, rowKey, dealerCard) {
             currentHandState.dealerCard = dealerCard;
             currentHandState.inputMode = 'preset';
-            currentHandState.presetType = section;
-            currentHandState.presetValue = rowKey;
+
+            if (rules.game === 'spanish21') {
+                const doubled = section === 'doubledHard' || section === 'doubledSoft';
+                currentHandState.doubled = doubled;
+                currentHandState.presetCardCount = doubled ? 3 : 2;
+                currentHandState.presetType = section === 'doubledHard' ? 'hard' : section === 'doubledSoft' ? 'soft' : section;
+            } else {
+                currentHandState.presetType = section;
+            }
 
             renderDealerButtons();
             setHandMode('preset');
-            setPresetCategory(section);
+            setPresetCategory(currentHandState.presetType);
+            currentHandState.presetValue = rowKey;
+            renderPresetChips();
             switchMainTab('advisor');
             updateAdvisor();
         }
