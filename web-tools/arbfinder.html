@@ -83,6 +83,11 @@ tbody tr.sel{background:var(--accent-soft)}
 #results tbody tr{cursor:pointer}#results tbody tr:hover{background:var(--surface-2)}
 .empty{padding:22px;text-align:center;color:var(--muted)}
 .profit{font-weight:700;color:var(--accent)}.loss{font-weight:700;color:var(--danger)}
+.badge-live{display:inline-flex;align-items:center;gap:4px;font:700 10px var(--mono);letter-spacing:.06em;padding:1px 6px;border-radius:4px;background:var(--danger);color:var(--surface);margin-right:6px;vertical-align:1px}
+.badge-live::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.25}}
+@media (prefers-reduced-motion: reduce){.badge-live::before{animation:none}}
+.stale{color:var(--warn)}
 .tag{display:inline-block;font:500 11px var(--mono);padding:1px 6px;border-radius:4px;background:var(--surface-2);color:var(--muted);margin-right:6px}
 details.log summary{cursor:pointer;color:var(--muted);font-size:13px}
 #logBox{margin-top:8px;font:12px/1.55 var(--mono);background:var(--surface-2);border-radius:8px;padding:10px;max-height:220px;overflow:auto;white-space:pre-wrap;word-break:break-all}
@@ -178,8 +183,15 @@ a{color:var(--accent)}
           <select id="op"><option value="any">不限</option><option value=">=">≥（美式赔率）</option><option value="<=">≤（美式赔率）</option></select></div>
         <div class="field"><label for="req">美式赔率值</label><input id="req" type="number" step="any" placeholder="例如 -200 或 +150" disabled></div>
         <div class="field top"><label for="league">联赛 League</label><div><select id="league"></select>
-          <div class="note">点「测试」或「查找赛事」后，会列出当前所有网球赛事和足球联赛供单独选择。足球只算 Total Goals（.5 盘口）。</div></div></div>
+          <div class="note">点「测试」或「查找赛事」后，会列出当前所有网球赛事和足球联赛供单独选择。足球默认计算大小球（Total Goals）和让球（Spread），只用 .5 盘口。</div></div></div>
         <div class="field"><label for="keyword">球队关键字</label><input id="keyword" type="text" placeholder="例如 Lakers"></div>
+        <div class="field top"><label for="liveMode">比赛状态</label><div>
+          <select id="liveMode">
+            <option value="all">全部（赛前 + 进行中）</option>
+            <option value="pre">仅赛前 Pre-match</option>
+            <option value="live">仅进行中 Live</option>
+          </select>
+          <div class="note" id="liveNote">已开赛的比赛标为 <span class="badge-live">LIVE</span>。滚球赔率变化很快，下注前务必在平台上核对。</div></div></div>
         <div class="field top"><span class="lbl" id="marketsLabel">Alt 盘口</span><div class="checks" id="marketBox" style="flex-direction:column"></div></div>
         <div class="field top"><span class="lbl">数据来源</span>
           <div>
@@ -215,17 +227,24 @@ a{color:var(--accent)}
 
   <!-- 4. Results -->
   <section class="card">
-    <h2><span class="step">4</span>结果 <span class="muted small" style="font-weight:400">Top 10，按锁定利润排序 · 点击一行查看下注细节</span></h2>
+    <h2><span class="step">4</span>结果 <span class="muted small" style="font-weight:400">按锁定利润排序 · 同一注的每个对冲平台单独一行 · 点击一行查看下注细节</span></h2>
     <div class="row" style="margin-bottom:10px">
       <span class="muted small" id="resultMeta"></span>
       <span class="spacer"></span>
+      <select id="marketFilter" style="width:auto;padding:5px 8px" title="按盘口筛选结果">
+        <option value="all">全部盘口</option><option value="h2h">独赢 Moneyline</option><option value="spreads">让分 Spread</option><option value="totals">大小分 Total</option>
+      </select>
+      <label class="muted small" for="topN">显示</label>
+      <select id="topN" style="width:auto;padding:5px 8px">
+        <option value="10">Top 10</option><option value="25">Top 25</option><option value="50" selected>Top 50</option><option value="100">Top 100</option>
+      </select>
       <button class="btn ghost" id="csvBtn" type="button" disabled>导出 CSV</button>
       <button class="btn ghost" id="jsonBtn" type="button" disabled>导出 JSON</button>
     </div>
     <div class="tablewrap" style="max-height:none">
       <table id="results">
-        <thead><tr><th>赛事</th><th>盘口</th><th>主注</th><th>对冲</th><th class="num">对冲金额</th><th class="num">锁定利润</th><th class="num">转化率</th></tr></thead>
-        <tbody><tr><td colspan="7" class="empty">暂无结果</td></tr></tbody>
+        <thead><tr><th class="num">#</th><th>赛事</th><th>盘口</th><th>主注</th><th>对冲</th><th class="num">对冲金额</th><th class="num">锁定利润</th><th class="num">转化率</th></tr></thead>
+        <tbody><tr><td colspan="8" class="empty">暂无结果</td></tr></tbody>
       </table>
     </div>
     <details class="log" style="margin-top:14px"><summary>API 请求日志</summary><div id="logBox"></div></details>
@@ -242,7 +261,7 @@ a{color:var(--accent)}
  * Configuration (ported from config/config.yaml)
  * ============================================================ */
 const CONFIG = {
-  top_n: 10,
+  top_n: 500,          // internal cap on ranked rows; the results table shows the selected Top N
   event_window_hours: 336,
   no_sweat: { bonus_value_ratio: 0.7 },
   profit_boost: { default_stake: 100, default_boost_percent: 30 },
@@ -251,7 +270,7 @@ const CONFIG = {
    * in_all: false → not included when League = "All" (to save credits).
    * soccer: 3-way h2h is never used; half_point_only drops .0/.25/.75 lines that can push. */
   sport_groups: {
-    basketball: "篮球", hockey: "冰球", baseball: "棒球", football: "美式 / 加式橄榄球", mma: "格斗", tennis: "网球", soccer: "足球（Total Goals 大小球）",
+    basketball: "篮球", hockey: "冰球", baseball: "棒球", football: "美式 / 加式橄榄球", mma: "格斗", tennis: "网球", soccer: "足球（大小球 / 让球）",
   },
   sports: {
     nba: { group: "basketball", sport_key: "basketball_nba", title: "NBA" },
@@ -259,15 +278,15 @@ const CONFIG = {
     nhl: { group: "hockey", sport_key: "icehockey_nhl", title: "NHL" },
     mlb: { group: "baseball", sport_key: "baseball_mlb", title: "MLB" },
     nfl: { group: "football", sport_key: "americanfootball_nfl", title: "NFL" },
-    ncaaf: { group: "football", sport_key: "americanfootball_ncaaf", title: "NCAAF" },
+    ncaaf: { group: "football", sport_key: "americanfootball_ncaaf", title: "NCAAF 大学橄榄球" },
     cfl: { group: "football", sport_key: "americanfootball_cfl", title: "CFL" },
     ufc: { group: "mma", sport_key: "mma_mixed_martial_arts", title: "UFC" },
     tennis_atp: { group: "tennis", dynamic_prefix: "tennis_atp_", title: "ATP 全部赛事" },
     tennis_wta: { group: "tennis", dynamic_prefix: "tennis_wta_", title: "WTA 全部赛事" },
-    soccer_major: { group: "soccer", title: "足球主要联赛", soccer: true, half_point_only: true, markets: ["totals"],
+    soccer_major: { group: "soccer", title: "足球主要联赛", soccer: true, half_point_only: true,
       sport_keys: ["soccer_epl", "soccer_spain_la_liga", "soccer_italy_serie_a", "soccer_germany_bundesliga", "soccer_france_ligue_one",
         "soccer_uefa_champs_league", "soccer_uefa_europa_league", "soccer_usa_mls"] },
-    soccer_all: { group: "soccer", title: "足球全部活跃联赛", soccer: true, half_point_only: true, markets: ["totals"], dynamic_prefix: "soccer_", in_all: false },
+    soccer_all: { group: "soccer", title: "足球全部活跃联赛", soccer: true, half_point_only: true, dynamic_prefix: "soccer_", in_all: false },
   },
   // Dynamic prefixes whose individual competitions are listed in the League dropdown once the sports list is loaded
   dynamic_listing: [
@@ -280,7 +299,8 @@ const CONFIG = {
     credit_thresholds: { core_market: 20, alt_market: 50 },
     optional_markets: {
       alternate_spreads: { title: "Alternate Spread", market_key: "alternate_spreads",
-        sport_keys: ["basketball_nba","basketball_wnba","icehockey_nhl","baseball_mlb","americanfootball_nfl","americanfootball_ncaaf","americanfootball_cfl"] },
+        sport_keys: ["basketball_nba","basketball_wnba","icehockey_nhl","baseball_mlb","americanfootball_nfl","americanfootball_ncaaf","americanfootball_cfl"],
+        sport_prefixes: ["soccer_"] },
       alternate_totals: { title: "Alternate Total / Goals", market_key: "alternate_totals",
         sport_keys: ["basketball_nba","basketball_wnba","icehockey_nhl","baseball_mlb","americanfootball_nfl","americanfootball_ncaaf","americanfootball_cfl"],
         sport_prefixes: ["soccer_"] },
@@ -299,10 +319,21 @@ const CONFIG = {
     draftkings: { enabled: true, title: "DraftKings" },
     fanduel: { enabled: true, title: "FanDuel" },
     proline: { enabled: false, title: "Proline+", bookmaker_key: "proline_ca_on" },
-    bet365: { enabled: false, title: "Bet365", bookmaker_key: "bet365_au" },
     hardrock: { enabled: false, title: "Hard Rock Bet", bookmaker_key: "hardrockbet" },
     betrivers: { enabled: false, title: "BetRivers", bookmaker_key: "betrivers_ca_on" },
-    betmgm: { enabled: false, title: "BetMGM", bookmaker_key: "betmgm_ca_on" },
+    // BetMGM Ontario (betmgm_ca_on) has no college-football board; the US feed (betmgm) is used for NCAAF.
+    betmgm: { enabled: false, title: "BetMGM", bookmaker_key: "betmgm_ca_on", sport_keys: { americanfootball_ncaaf: "betmgm" } },
+    sportsinteraction: { enabled: false, title: "Sports Interaction", bookmaker_key: "sportsinteraction_ca_on" },
+    betano: { enabled: false, title: "Betano", bookmaker_key: "betano_ca_on" },
+    pointsbet: { enabled: false, title: "PointsBet", bookmaker_key: "pointsbetca" },
+    playnow: { enabled: false, title: "PlayNow", bookmaker_key: "playnow_ca", note: "BC 等省" },
+    // Betway has no Ontario feed on The Odds API; the UK feed's odds may differ from Betway Ontario.
+    betway: { enabled: false, title: "Betway", bookmaker_key: "betway", note: "英国版赔率，可能与安大略不同" },
+    // Paid-plan bookmakers
+    bet99: { enabled: false, title: "BET99", bookmaker_key: "bet99_ca_on", paid: true, note: "付费套餐" },
+    caesars: { enabled: false, title: "Caesars", bookmaker_key: "williamhill_us", paid: true, note: "付费套餐" },
+    // The Odds API has no North-American Bet365 feed: bet365_au is Australia-only (AFL/NRL) and paid plans only.
+    bet365: { enabled: false, title: "Bet365", bookmaker_key: "bet365_au", paid: true, note: "仅澳洲 AFL/NRL · 付费套餐" },
   },
   odds_api: { base_url: "https://api.the-odds-api.com", odds_format: "decimal", date_format: "iso", max_retries: 3, backoff_ms: 2000 },
 };
@@ -329,7 +360,12 @@ const fmtG = (n) => String(+Number(n).toPrecision(12));
 const signed = (n) => (n > 0 ? "+" : "") + fmtG(n);
 
 function platformTitle(name) { return CONFIG.platforms[name]?.title || name; }
-function apiBookmakerKey(name) { return CONFIG.platforms[name]?.bookmaker_key || name; }
+// API bookmaker key for a platform; a platform may use a different feed for specific sports (sport_keys).
+function apiBookmakerKey(name, sk) {
+  const p = CONFIG.platforms[name];
+  return (sk && p?.sport_keys?.[sk]) || p?.bookmaker_key || name;
+}
+const allApiKeys = (name) => uniq([apiBookmakerKey(name), ...Object.values(CONFIG.platforms[name]?.sport_keys || {})]);
 let apiSportTitles = {};   // filled from /v4/sports
 function sportEntryFor(sk) {
   for (const v of Object.values(CONFIG.sports)) {
@@ -340,7 +376,13 @@ function sportEntryFor(sk) {
 }
 const isSoccerKey = (sk) => sk.startsWith("soccer_") || !!sportEntryFor(sk)?.soccer;
 const halfPointOnly = (sk) => !!sportEntryFor(sk)?.half_point_only || sk.startsWith("soccer_");
-function coreMarketsFor(sk) { return sportEntryFor(sk)?.markets || (isSoccerKey(sk) ? ["totals"] : CONFIG.full_game.core_markets); }
+// Soccer always uses Total Goals + Spread (3-way moneyline can't be hedged two-sided)
+const SOCCER_MARKETS = ["totals", "spreads"];
+function soccerMarkets() { return SOCCER_MARKETS; }
+function coreMarketsFor(sk) {
+  if (isSoccerKey(sk)) return soccerMarkets();
+  return sportEntryFor(sk)?.markets || CONFIG.full_game.core_markets;
+}
 function sportTitle(sk) {
   const e = sportEntryFor(sk);
   if (e?.sport_key === sk) return e.title;
@@ -348,6 +390,7 @@ function sportTitle(sk) {
 }
 function altMarketAllowed(marketName, sk) {
   const m = CONFIG.full_game.optional_markets[marketName];
+  if (isSoccerKey(sk) && !soccerMarkets().includes(marketFamily(m.market_key))) return false;
   return (m.sport_keys || []).includes(sk) || (m.sport_prefixes || []).some((p) => sk.startsWith(p));
 }
 function localTime(iso) {
@@ -362,6 +405,29 @@ function tzLabel() {
   return `UTC${s}${String(Math.floor(a / 60)).padStart(2, "0")}:${String(a % 60).padStart(2, "0")}`;
 }
 function isoZ(d) { return d.toISOString().replace(/\.\d{3}Z$/, "Z"); }
+/* Live = start time has passed (The Odds API drops events once they are completed). */
+// Capped at 24 h after kickoff so stale cached games (long finished) are not shown as live
+const isLive = (iso, now = Date.now()) => { const t = new Date(iso).getTime(); return !isNaN(t) && t <= now && now - t < 24 * 3600e3; };
+function fmtDuration(ms) {
+  const m = Math.floor(Math.abs(ms) / 60000);
+  if (m < 1) return `${Math.max(0, Math.floor(Math.abs(ms) / 1000))} 秒`;
+  if (m < 60) return `${m} 分钟`;
+  const h = Math.floor(m / 60), d = Math.floor(h / 24);
+  return d >= 1 ? `${d} 天 ${h % 24} 小时` : `${h} 小时 ${m % 60} 分钟`;
+}
+function statusText(iso, now = Date.now()) {
+  const t = new Date(iso).getTime();
+  if (isNaN(t)) return "未知";
+  return t <= now ? `进行中（已开赛 ${fmtDuration(now - t)}）` : `赛前（距开赛 ${fmtDuration(t - now)}）`;
+}
+const LIVE_STALE_MS = 60 * 1000;   // live odds older than this are flagged
+function oddsAgeText(iso, live, now = Date.now()) {
+  if (!iso) return "未知";
+  const age = now - new Date(iso).getTime();
+  const txt = `${localTime(iso)}（${fmtDuration(age)}前）`;
+  return live && age > LIVE_STALE_MS ? `⚠ ${txt}` : txt;
+}
+const liveBadge = (iso) => (isLive(iso) ? `<span class="badge-live">LIVE</span>` : "");
 
 /* ============================================================
  * Odds rules (odds_rules.py)
@@ -391,7 +457,7 @@ function marketFamily(k) {
 function describeMarket(k, sk = "") {
   const fam = marketFamily(k), alt = k.startsWith("alternate_") ? "Alternate " : "";
   if (sk.startsWith("soccer_") && fam === "totals") return alt + "Total Goals";
-  if (sk.startsWith("soccer_") && fam === "spreads") return alt + "Asian Handicap";
+  if (sk.startsWith("soccer_") && fam === "spreads") return alt + "Spread（让球）";
   if (sk.startsWith("tennis_") && fam === "totals") return alt + "Total Games";
   if (sk.startsWith("tennis_") && fam === "spreads") return alt + "Game Handicap";
   const labels = { h2h: "Moneyline", spreads: "Spread", totals: "Total", alternate_spreads: "Alternate Spread",
@@ -419,8 +485,11 @@ function filterBinaryQuotes(quotes) {
   });
 }
 function totalDirection(name) { const n = norm(name); return n.startsWith("over") ? "over" : n.startsWith("under") ? "under" : n; }
+// "alternate_spreads" and "spreads" price the same kind of line: a main line can be hedged with the
+// same line from another book's alternate market (and vice versa). Period markets stay separate.
+const lineMarketKey = (k) => k.replace(/^alternate_/, "");
 function quotesAreCompatible(a, b) {
-  if (a.event_id !== b.event_id || a.market_key !== b.market_key) return false;
+  if (a.event_id !== b.event_id || lineMarketKey(a.market_key) !== lineMarketKey(b.market_key)) return false;
   const f = marketFamily(a.market_key);
   if (f === "h2h") return norm(a.outcome_name) !== norm(b.outcome_name);
   if (f === "spreads")
@@ -437,13 +506,21 @@ function cmpOutcome(a, b) {
   const [x0, x1] = outcomeSortKey(a.outcome_name), [y0, y1] = outcomeSortKey(b.outcome_name);
   return x0 - y0 || (x1 < y1 ? -1 : x1 > y1 ? 1 : 0);
 }
+// Spread line key that keeps orientation: "A -6.5 / B +6.5" and "A +6.5 / B -6.5" are different lines.
+function spreadLineKey(q) {
+  if (q.point == null) return null;
+  const first = [norm(q.home_team), norm(q.away_team)].sort()[0];
+  return norm(q.outcome_name) === first ? q.point : -q.point;
+}
+const outcomeSideKey = (q) => (marketFamily(q.market_key) === "totals" ? totalDirection(q.outcome_name) : norm(q.outcome_name));
 function buildMatchups(quotes) {
   const groups = new Map();
   for (const q of quotes) {
     const f = marketFamily(q.market_key);
-    const pt = f === "h2h" ? null : f === "spreads" && q.point != null ? Math.abs(q.point) : q.point ?? null;
-    const key = JSON.stringify([q.event_id, q.market_key, pt]);
-    if (!groups.has(key)) groups.set(key, { event_id: q.event_id, market_key: q.market_key, entries: [] });
+    const pt = f === "h2h" ? null : f === "spreads" ? spreadLineKey(q) : q.point ?? null;
+    const lm = lineMarketKey(q.market_key);
+    const key = JSON.stringify([q.event_id, lm, pt]);
+    if (!groups.has(key)) groups.set(key, { event_id: q.event_id, market_key: lm, entries: [] });
     groups.get(key).entries.push(q);
   }
   const matchups = [];
@@ -451,12 +528,14 @@ function buildMatchups(quotes) {
     const byBook = new Map();
     const books = uniq(g.entries.map((e) => e.bookmaker_key));
     for (const bk of books) {
-      const list = g.entries.filter((e) => e.bookmaker_key === bk);
-      let pair = null;
-      outer: for (let i = 0; i < list.length; i++)
-        for (let j = i + 1; j < list.length; j++)
-          if (quotesAreCompatible(list[i], list[j])) { pair = [list[i], list[j]]; break outer; }
-      if (pair) byBook.set(bk, pair.sort(cmpOutcome));
+      // Per side keep this book's best price (a book can quote the same line in its main and alternate market)
+      const bestBySide = new Map();
+      for (const e of g.entries.filter((x) => x.bookmaker_key === bk)) {
+        const s = outcomeSideKey(e), cur = bestBySide.get(s);
+        if (!cur || e.decimal_odds > cur.decimal_odds) bestBySide.set(s, e);
+      }
+      const sides = [...bestBySide.values()];
+      if (sides.length === 2 && quotesAreCompatible(sides[0], sides[1])) byBook.set(bk, sides.sort(cmpOutcome));
     }
     if (byBook.size) matchups.push({ event_id: g.event_id, market_key: g.market_key, byBook });
   }
@@ -474,6 +553,8 @@ function baseResult(p, h, promoType) {
     hedge_platform: h.bookmaker_key, hedge_selection: h.outcome_name, hedge_odds_decimal: h.decimal_odds,
     primary_point: p.point ?? null, hedge_point: h.point ?? null,
     primary_bet_description: describeQuote(p), hedge_bet_description: describeQuote(h),
+    primary_last_update: p.last_update || null, hedge_last_update: h.last_update || null,
+    hedge_market_key: h.market_key,
   };
 }
 /* Hedge-stake rounding. step 0 = no rounding (cent precision, identical to the original Python results). */
@@ -533,23 +614,45 @@ function rankResults(ctx, allQuotes) {
   const strat = makeStrategy(ctx);
   let quotes = allQuotes;
   if (ctx.selectedEventIds.length) { const s = new Set(ctx.selectedEventIds); quotes = quotes.filter((q) => s.has(q.event_id)); }
+  if (ctx.soccerMarkets) quotes = quotes.filter((q) => !isSoccerKey(q.sport_key) || ctx.soccerMarkets.includes(marketFamily(q.market_key)));
+  if (ctx.liveMode === "live") quotes = quotes.filter((q) => isLive(q.commence_time));
+  else if (ctx.liveMode === "pre") quotes = quotes.filter((q) => !isLive(q.commence_time));
   const results = [];
+  const diag = { lineMatched: 0, lineUnmatched: 0 };
   for (const m of buildMatchups(filterBinaryQuotes(quotes))) {
     const base = m.byBook.get(ctx.base);
     if (!base) continue;
     const hedgePairs = ctx.hedges.filter((h) => m.byBook.has(h)).map((h) => m.byBook.get(h));
+    // Count the base book's MAIN spread/total lines that no hedge book offers (lines differ, e.g. -6.5 vs -7)
+    if (marketFamily(m.market_key) !== "h2h" && !base[0].market_key.startsWith("alternate_"))
+      hedgePairs.length ? diag.lineMatched++ : diag.lineUnmatched++;
     for (let side = 0; side < 2; side++) {
       const bq = base[side];
       if (!strat.eligible(bq)) continue;
       const cands = hedgePairs.map((p) => p[1 - side]).filter((h) => quotesAreCompatible(bq, h));
       if (!cands.length) continue;
-      const best = cands.reduce((a, b) => (b.decimal_odds > a.decimal_odds ? b : a));
-      const r = strat.calc(bq, best);
-      if (r) results.push(r);
+      // One ranked row per distinct hedge price (best first). Platforms quoting the same price share a row.
+      // Stable sort keeps the configured hedge order inside a tie, so the best row matches the original engine.
+      const sorted = [...cands].sort((a, b) => b.decimal_odds - a.decimal_odds);
+      const groups = [];
+      for (const q of sorted) {
+        const g = groups.find((x) => isClose(x[0].decimal_odds, q.decimal_odds));
+        g ? g.push(q) : groups.push([q]);
+      }
+      groups.forEach((g, gi) => {
+        const r = strat.calc(bq, g[0]);
+        if (!r) return;
+        r.hedge_tied = uniq(g.slice(1).map((q) => q.bookmaker_key)).filter((k) => k !== g[0].bookmaker_key);
+        r.hedge_rank = gi + 1;            // 1 = best hedge price for this bet
+        r.hedge_options = groups.length;  // how many distinct hedge prices exist for this bet
+        results.push(r);
+      });
     }
   }
   const key = metricOf(ctx);
-  return results.sort((a, b) => b[key] - a[key]).slice(0, CONFIG.top_n);
+  const ranked = results.sort((a, b) => b[key] - a[key]).slice(0, CONFIG.top_n);
+  ranked.diag = diag;
+  return ranked;
 }
 
 /* ============================================================
@@ -557,6 +660,12 @@ function rankResults(ctx, allQuotes) {
  * ============================================================ */
 class OddsAPIError extends Error { constructor(msg, status) { super(msg); this.status = status; } }
 class AllKeysExhaustedError extends Error {}
+const KEY_PROBLEM_RE = /api[ _-]?key|apikey|quota|usage|requests? (remaining|limit)|out of (requests|credits)/i;
+const REQUEST_PROBLEM_RE = /bookmaker|market|plan|subscri|region|sport/i;
+// A 401/403 is treated as a key problem unless its message is clearly about the request (bookmaker / market / plan)
+const isKeyProblemText = (t) => !t || KEY_PROBLEM_RE.test(t) || !REQUEST_PROBLEM_RE.test(t);
+// Errors that must stop the whole run (vs. skipping one sport / event)
+const isFatal = (e) => e instanceof AllKeysExhaustedError || !!e?.keyProblem || !!e?.baseUnavailable;
 
 class KeyPool {
   constructor(keys) {
@@ -610,11 +719,18 @@ class OddsClient {
         await sleep(backoff_ms * 2 ** retry); continue;
       }
       if (resp.status === 401 || resp.status === 403) {
-        this.pool.markExhausted(key);
         const t = await resp.text().catch(() => "");
-        if (retry >= max_retries || this.pool.exhausted.size >= this.pool.keys.length)
-          throw new OddsAPIError(`API Key 无效或额度已用完（${resp.status}）。${t.slice(0, 200)}`, resp.status);
-        continue;
+        // Only an invalid key / exhausted quota retires the key. Other 401/403s (e.g. a bookmaker or
+        // market not included in the plan) are request errors and must not disable a working key.
+        if (isKeyProblemText(t)) {
+          this.pool.markExhausted(key);
+          if (retry >= max_retries || this.pool.exhausted.size >= this.pool.keys.length) {
+            const err = new OddsAPIError(`API Key 无效或额度已用完（${resp.status}）。${t.slice(0, 200)}`, resp.status);
+            err.keyProblem = true; throw err;
+          }
+          continue;
+        }
+        throw new OddsAPIError(`Odds API 拒绝了请求（${resp.status}）：${t.slice(0, 300)}`, resp.status);
       }
       if (resp.status >= 400 && resp.status < 500) {
         const t = await resp.text().catch(() => "");
@@ -662,13 +778,14 @@ function parseOddsPayload(payload, sportKey) {
             home_team: ev.home_team || "", away_team: ev.away_team || "",
             bookmaker_key: bm.key || "", bookmaker_title: bm.title || "", market_key: mk.key || "",
             outcome_name: o.name || "", decimal_odds: Number(o.price) || 0, point: o.point ?? null,
+            last_update: mk.last_update || bm.last_update || null,
           });
   }
   return quotes;
 }
 function normalizeBookmakerQuotes(quotes) {
   const byApi = {};
-  for (const name of Object.keys(CONFIG.platforms)) byApi[apiBookmakerKey(name)] = name;
+  for (const name of Object.keys(CONFIG.platforms)) for (const k of allApiKeys(name)) byApi[k] = name;
   return quotes.map((q) => (byApi[q.bookmaker_key] ? { ...q, bookmaker_key: byApi[q.bookmaker_key], bookmaker_title: platformTitle(byApi[q.bookmaker_key]) } : q));
 }
 
@@ -772,7 +889,7 @@ function populateStatic() {
   $("tzLabel").textContent = `(${tzLabel()})`;
   $("period").innerHTML = `<option value="full-game">Full Game（全场）</option>` +
     Object.entries(CONFIG.periods).map(([k, v]) => `<option value="${esc(k)}">${esc(v.title)}</option>`).join("");
-  $("base").innerHTML = Object.keys(CONFIG.platforms).map((k) => `<option value="${esc(k)}">${esc(platformTitle(k))}</option>`).join("");
+  $("base").innerHTML = Object.entries(CONFIG.platforms).map(([k, v]) => `<option value="${esc(k)}">${esc(v.title)}${v.note ? `（${esc(v.note)}）` : ""}</option>`).join("");
   const now = new Date(), end = new Date(now.getTime() + CONFIG.event_window_hours * 3600e3);
   const d = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
   $("startDate").value = d(now); $("endDate").value = d(end);
@@ -810,7 +927,7 @@ function refreshHedges() {
   document.querySelectorAll("#hedgeBox input").forEach((i) => (prev[i.value] = i.checked));
   $("hedgeBox").innerHTML = Object.entries(CONFIG.platforms).filter(([k]) => k !== base).map(([k, v]) => {
     const checked = k in prev ? prev[k] : !!v.enabled;
-    return `<label class="chk"><input type="checkbox" value="${esc(k)}" ${checked ? "checked" : ""}> ${esc(v.title)}</label>`;
+    return `<label class="chk" ${v.note ? `title="${esc(v.note)}"` : ""}><input type="checkbox" value="${esc(k)}" ${checked ? "checked" : ""}> ${esc(v.title)}${v.note ? ` <span class="tag" style="margin:0">${esc(v.note)}</span>` : ""}</label>`;
   }).join("");
 }
 function refreshMarkets() {
@@ -835,7 +952,8 @@ function renderEvents() {
     tb.innerHTML = state.events.map((ev, i) => {
       const sel = state.selected.has(i);
       return `<tr data-i="${i}" class="${sel ? "sel" : ""}"><td><input type="checkbox" data-i="${i}" ${sel ? "checked" : ""}></td>
-        <td><span class="tag">${esc(ev.display_sport_title)}</span></td><td>${esc(ev.away_team)} vs ${esc(ev.home_team)}</td><td>${esc(localTime(ev.commence_time))}</td></tr>`;
+        <td><span class="tag">${esc(ev.display_sport_title)}</span></td><td>${liveBadge(ev.commence_time)}${esc(ev.away_team)} vs ${esc(ev.home_team)}</td>
+        <td>${esc(localTime(ev.commence_time))}${isLive(ev.commence_time) ? `<span class="muted small"> · 已开赛 ${esc(fmtDuration(Date.now() - new Date(ev.commence_time)))}</span>` : ""}</td></tr>`;
     }).join("");
   }
   $("selAll").checked = state.events.length > 0 && state.selected.size === state.events.length;
@@ -852,10 +970,24 @@ function queryWindow() {
   if (end < start) throw new Error("结束时间必须晚于或等于开始时间。");
   return [start, end];
 }
+/* Query window after applying the match-status filter:
+ *   live → games started in the last 24 h up to now (date inputs ignored)
+ *   pre  → never earlier than now */
+const LIVE_LOOKBACK_MS = 24 * 3600e3;
+function effectiveWindow() {
+  const mode = $("liveMode").value, now = new Date();
+  if (mode === "live") return [new Date(now.getTime() - LIVE_LOOKBACK_MS), now];
+  let [from, to] = queryWindow();
+  if (mode === "pre") {
+    if (to <= now) throw new Error("「仅赛前」模式下，结束时间必须晚于现在。");
+    if (from < now) from = now;
+  }
+  return [from, to];
+}
 const checkedValues = (boxId) => [...document.querySelectorAll(`#${boxId} input:checked`)].map((i) => i.value);
 function currentScope() {
   const [s, e] = queryWindow();
-  return JSON.stringify([s.getTime(), e.getTime(), $("period").value, $("league").value, $("keyword").value]);
+  return JSON.stringify([s.getTime(), e.getTime(), $("period").value, $("league").value, $("keyword").value, $("liveMode").value]);
 }
 function validateForm() {
   if (!getKeys().length) return "请先输入 API Key。";
@@ -870,7 +1002,7 @@ function validateForm() {
   if ($("mode").value === "profit-boost") { const b = parseFloat($("boost").value); if (isNaN(b) || b < 0) return "加成百分比不能为负数。"; }
   if ($("op").value !== "any" && isNaN(parseFloat($("req").value))) return "请填写美式赔率值。";
   if ($("roundStep").value === "custom" && !(parseFloat($("roundCustom").value) > 0)) return "请填写大于 0 的自定义取整步长。";
-  try { queryWindow(); } catch (e) { return e.message; }
+  try { effectiveWindow(); } catch (e) { return e.message; }
   return null;
 }
 function refreshRunButton() {
@@ -910,7 +1042,7 @@ async function testKey() {
 
 async function findEvents() {
   let from, to;
-  try { [from, to] = queryWindow(); } catch (e) { setStatus(e.message, "err"); return; }
+  try { [from, to] = effectiveWindow(); } catch (e) { setStatus(e.message, "err"); return; }
   setBusy(true); setStatus("正在查找赛事…", "", true);
   try {
     const client = getClient();
@@ -921,14 +1053,22 @@ async function findEvents() {
       try {
         const evs = await client.getEvents(sk, from, to);
         events.push(...evs.map((e) => ({ ...e, sport_key: sk, display_sport_title: sportTitle(sk) })));
-      } catch (e) { if (e instanceof AllKeysExhaustedError || e.status === 401 || e.status === 403) throw e; log(`跳过 ${sk}: ${e.message}`); }
+      } catch (e) { if (isFatal(e)) throw e; log(`跳过 ${sk}: ${e.message}`); }
     }
     const kw = norm($("keyword").value);
-    const filtered = kw ? events.filter((e) => norm(e.home_team).includes(kw) || norm(e.away_team).includes(kw)) : events;
+    const lm = $("liveMode").value;
+    const filtered = events
+      .filter((e) => !kw || norm(e.home_team).includes(kw) || norm(e.away_team).includes(kw))
+      .filter((e) => lm === "all" || (lm === "live") === isLive(e.commence_time));
     filtered.sort((a, b) => String(a.commence_time).localeCompare(String(b.commence_time)));
     state.events = filtered; state.selected = new Set(); state.eventsScope = currentScope();
     renderEvents();
-    setStatus(keys.length ? `找到 ${filtered.length} 场赛事。可选择具体赛事，或不选以分析整个日期范围。` : "所选联赛当前不在 The Odds API 的活跃列表中。", filtered.length ? "" : "warn");
+    const liveN = filtered.filter((e) => isLive(e.commence_time)).length;
+    const msg = !keys.length ? "所选联赛当前不在 The Odds API 的活跃列表中。"
+      : lm === "live" && !filtered.length ? "现在没有进行中的比赛。"
+      : lm === "live" ? `找到 ${filtered.length} 场进行中的比赛。可选择具体赛事，或不选以分析全部。`
+      : `找到 ${filtered.length} 场赛事${liveN ? `（其中 ${liveN} 场进行中）` : ""}。可选择具体赛事，或不选以分析全部。`;
+    setStatus(msg, filtered.length ? "" : "warn");
   } catch (e) {
     setStatus(`查找赛事失败：${e.message}`, "err");
   } finally { setBusy(false); }
@@ -940,10 +1080,10 @@ function buildContext() {
   const mode = $("mode").value, period = $("period").value;
   const amt = parseFloat($("stake").value);
   const op = $("op").value === "any" ? null : $("op").value;
-  const [from, to] = queryWindow();
+  const [from, to] = effectiveWindow();
   const selectedEvents = [...state.selected].sort((a, b) => a - b).map((i) => state.events[i]);
   const ctx = {
-    mode, period, base: $("base").value, hedges: checkedValues("hedgeBox"),
+    mode, period, base: $("base").value, hedges: checkedValues("hedgeBox"), liveMode: $("liveMode").value, soccerMarkets: soccerMarkets(),
     stake: mode === "bonus-bet" ? null : amt, bonusAmount: mode === "bonus-bet" ? amt : null,
     boost: mode === "profit-boost" ? parseFloat($("boost").value) : null,
     op, req: op ? parseFloat($("req").value) : null,
@@ -955,8 +1095,8 @@ function buildContext() {
     rounding: readRounding(),
   };
   if (ctx.hedges.includes(ctx.base)) throw new Error("主平台不能同时作为对冲平台。");
-  ctx.bookmakers = [ctx.base, ...ctx.hedges].map(apiBookmakerKey);
-  ctx.regions = regionsFactor(ctx.bookmakers.length);
+  ctx.platforms = [ctx.base, ...ctx.hedges];          // platform names still requested (paid ones may be dropped)
+  ctx.regions = regionsFactor(ctx.platforms.length);
   if (selectedEvents.length) ctx.sportKeys = uniq(selectedEvents.map((e) => e.sport_key));
   else if (period === "full-game" && state.eventsScope && state.eventsScope === currentScope()) {
     ctx.sportKeys = uniq(state.events.map((e) => e.sport_key)).sort();
@@ -969,11 +1109,35 @@ async function ensureSportKeys(client, ctx) {
   if (!ctx.sportKeys) ctx.sportKeys = await resolveActiveSportKeys(client, ctx.league, ctx.period);
   return ctx.sportKeys;
 }
+/* If the API rejects a request because of a paid / region-locked bookmaker (e.g. Caesars),
+ * drop those bookmakers and retry instead of failing the whole sport. */
+const isPaidPlatform = (name) => !!CONFIG.platforms[name]?.paid;
+const booksFor = (ctx, sk) => uniq(ctx.platforms.map((n) => apiBookmakerKey(n, sk)));
+async function withBookmakerFallback(ctx, sk, fn) {
+  for (;;) {
+    try { return await fn(booksFor(ctx, sk)); }
+    catch (e) {
+      if (!(e instanceof OddsAPIError) || isFatal(e) || e.status === 429 || !(e.status >= 400 && e.status < 500)) throw e;
+      const paid = ctx.platforms.filter(isPaidPlatform);
+      if (!paid.length) throw e;
+      if (paid.includes(ctx.base)) {
+        const err = new OddsAPIError(`主平台 ${platformTitle(ctx.base)} 无法获取赔率（${CONFIG.platforms[ctx.base]?.note || "可能需要付费套餐或不在该地区"}）。原始错误：${e.message}`, e.status);
+        err.baseUnavailable = true; throw err;
+      }
+      ctx.platforms = ctx.platforms.filter((n) => !paid.includes(n));
+      ctx.droppedBooks = uniq([...(ctx.droppedBooks || []), ...paid]);
+      log(`已移除不可用的平台 ${paid.join(", ")} 并重试（${e.status}）`);
+      if (!ctx.platforms.length) throw e;
+    }
+  }
+}
 async function fetchCoreQuotes(client, ctx) {
   const all = [];
   for (const sk of await ensureSportKeys(client, ctx)) {
-    try { all.push(...normalizeBookmakerQuotes(await client.getOdds(sk, ctx.bookmakers, coreMarketsFor(sk), ctx.from, ctx.to))); }
-    catch (e) { if (e instanceof AllKeysExhaustedError || e.status === 401 || e.status === 403) throw e; log(`跳过运动 ${sk}: ${e.message}`); }
+    const mk = coreMarketsFor(sk);
+    if (!mk.length) continue;
+    try { all.push(...normalizeBookmakerQuotes(await withBookmakerFallback(ctx, sk, (books) => client.getOdds(sk, books, mk, ctx.from, ctx.to)))); }
+    catch (e) { if (isFatal(e)) throw e; log(`跳过运动 ${sk}: ${e.message}`); }
   }
   return all;
 }
@@ -1004,10 +1168,10 @@ async function fetchEventMarketQuotes(client, ctx, plan, into, label) {
   for (const [sk, id, marketKeys] of plan) {
     n++; setStatus(`正在拉取${label}赔率（${n}/${plan.length}）…`, "", true);
     try {
-      const q = await client.getEventOdds(sk, id, ctx.bookmakers, marketKeys);
+      const q = await withBookmakerFallback(ctx, sk, (books) => client.getEventOdds(sk, id, books, marketKeys));
       if (q.length) into.push(...normalizeBookmakerQuotes(q)); else skipped++;
     } catch (e) {
-      if (e instanceof AllKeysExhaustedError || e.status === 401 || e.status === 403) throw e;
+      if (isFatal(e)) throw e;
       skipped++; log(`跳过${label} ${id} (${sk}): ${e.message}`);
     }
   }
@@ -1131,6 +1295,14 @@ function onRoundingChange() {
   const ctx = { ...state.lastCtx, rounding: r };
   finish(ctx, rankResults(ctx, cache.quotes), "缓存", r.step > 0 ? `已按新的取整设置重算（${roundingLabel(r)}）。` : "已取消取整并重算。");
 }
+function onLiveModeChange() {
+  const live = $("liveMode").value === "live";
+  ["startDate", "startTime", "endDate", "endTime"].forEach((id) => ($(id).disabled = live));
+  $("liveNote").innerHTML = live
+    ? `只看已开赛的比赛（最近 24 小时内开赛、尚未结束），忽略上面的日期范围。滚球赔率变化很快，下注前务必在平台上核对。`
+    : `已开赛的比赛标为 <span class="badge-live">LIVE</span>。滚球赔率变化很快，下注前务必在平台上核对。`;
+  refreshRunButton();
+}
 function restoreRounding() {
   try {
     const s = JSON.parse(lsGet(LS_ROUND) || "null");
@@ -1143,50 +1315,95 @@ function restoreRounding() {
 }
 
 function finish(ctx, ranked, source, note = "", client = null) {
-  const top = [...ranked].sort((a, b) => b.locked_profit - a.locked_profit).slice(0, 10);
-  state.lastResults = top;
+  state.allResults = [...ranked].sort((a, b) => b.locked_profit - a.locked_profit);
+  state.lastResults = viewResults();
   state.lastCtx = ctx;
   state.lastMeta = {
     promo_type: ctx.mode, period: ctx.period, selected_markets: ctx.selectedMarkets, base_bookmaker: ctx.base,
     hedge_bookmakers: ctx.hedges, selected_leagues: ctx.sportKeys || [], selected_event_ids: ctx.selectedEventIds,
     stake: ctx.stake, bonus_amount: ctx.bonusAmount, boost_percent: ctx.boost,
+    live_filter: ctx.liveMode || "all",
     hedge_rounding: ctx.rounding?.step > 0 ? { step: ctx.rounding.step, direction: ctx.rounding.dir } : null,
     generated_at: new Date().toISOString(), data_source: source,
   };
   renderResults();
   const used = client && client.creditsUsed ? `，本次消耗 ${client.creditsUsed} 额度` : "";
-  setStatus(`${note ? note + " " : ""}分析完成（${source}数据${used}）：共 ${ranked.length} 条结果。`, ranked.length ? "ok" : "warn");
+  const cov = source === "实时" ? coverageNote(ctx) : { text: "", baseMissing: false };
+  const d = ranked.diag;
+  if (d?.lineUnmatched) cov.text += ` ${platformTitle(ctx.base)} 有 ${d.lineUnmatched} 个让分/大小分主盘口，对冲平台没有开出相同的盘口线（例如 -6.5 对 -7），已跳过。勾选更多对冲平台，或勾选 Alt Spread / Alt Total，能匹配到更多。`;
+  setStatus(`${note ? note + " " : ""}分析完成（${source}数据${used}）：共 ${ranked.length} 条结果。${cov.text}`,
+    cov.baseMissing || !ranked.length ? "warn" : cov.text ? "warn" : "ok");
 }
 
+// Which selected platforms returned no odds at all this run (plan / region / coverage)
+function coverageNote(ctx) {
+  const present = new Set((loadCache()?.quotes || []).map((q) => q.bookmaker_key));
+  const missing = [ctx.base, ...ctx.hedges].filter((n) => !present.has(n));
+  if (!missing.length) return { text: "", baseMissing: false };
+  const desc = missing.map((n) => platformTitle(n) + (CONFIG.platforms[n]?.note ? `（${CONFIG.platforms[n].note}）` : "")).join("、");
+  const dropped = (ctx.droppedBooks || []).length ? " 部分平台被 API 拒绝，已自动跳过。" : "";
+  return { text: ` 注意：${desc} 没有返回任何赔率。${dropped}`, baseMissing: missing.includes(ctx.base) };
+}
+// Hedge platform plus any others tied on the same best odds
+const hedgePlatformNames = (r) => [r.hedge_platform, ...(r.hedge_tied || [])].map(platformTitle);
+function hedgePlatformsHtml(r) {
+  const names = hedgePlatformNames(r);
+  if (names.length === 1) return esc(names[0]);
+  return `${names.map(esc).join(" / ")} <span class="tag" style="margin:0" title="这些平台的对冲赔率相同">${names.length} 家同赔率</span>`;
+}
+const LS_TOPN = "arbfinder.topN";
+function resultLimit() { return parseInt($("topN").value, 10) || 50; }
+function viewResults() {
+  const f = $("marketFilter").value;
+  const list = f === "all" ? state.allResults || [] : (state.allResults || []).filter((r) => marketFamily(r.market_key) === f);
+  return list.slice(0, resultLimit());
+}
+function onTopNChange() {
+  lsSet(LS_TOPN, $("topN").value);
+  if (!state.allResults) return;
+  state.lastResults = viewResults();
+  renderResults();
+}
 function renderResults() {
   const tb = $("results").querySelector("tbody");
   const rs = state.lastResults;
   $("csvBtn").disabled = $("jsonBtn").disabled = !rs.length;
-  const rl = state.lastCtx ? roundingLabel(state.lastCtx.rounding) : "";
-  $("resultMeta").textContent = state.lastMeta ? `${state.lastMeta.promo_type} · 主平台 ${platformTitle(state.lastMeta.base_bookmaker)}${rl ? " · " + rl : ""} · ${localTime(state.lastMeta.generated_at)}` : "";
-  if (!rs.length) { tb.innerHTML = `<tr><td colspan="7" class="empty">没有找到符合条件的对冲组合。</td></tr>`; return; }
+  const rl = state.lastCtx ? [{ live: "仅进行中", pre: "仅赛前" }[state.lastCtx.liveMode], roundingLabel(state.lastCtx.rounding)].filter(Boolean).join(" · ") : "";
+  const mf = $("marketFilter").value;
+  const poolN = !state.allResults ? 0 : mf === "all" ? state.allResults.length : state.allResults.filter((r) => marketFamily(r.market_key) === mf).length;
+  const shownTxt = state.allResults ? ` · 显示 ${rs.length} / ${poolN} 条${mf !== "all" ? `（${$("marketFilter").selectedOptions[0].textContent}）` : ""}` : "";
+  $("resultMeta").textContent = state.lastMeta ? `${state.lastMeta.promo_type} · 主平台 ${platformTitle(state.lastMeta.base_bookmaker)}${rl ? " · " + rl : ""} · ${localTime(state.lastMeta.generated_at)}${shownTxt}` : "";
+  if (!rs.length) { tb.innerHTML = `<tr><td colspan="8" class="empty">没有找到符合条件的对冲组合。</td></tr>`; return; }
   tb.innerHTML = rs.map((r, i) => `<tr data-i="${i}">
-    <td><span class="tag">${esc(sportTitle(r.sport_key))}</span>${esc(r.event_name)}<div class="muted small">${esc(localTime(r.commence_time))}</div></td>
+    <td class="num muted">${i + 1}</td>
+    <td><span class="tag">${esc(sportTitle(r.sport_key))}</span>${liveBadge(r.commence_time)}${esc(r.event_name)}<div class="muted small">${esc(localTime(r.commence_time))}${isLive(r.commence_time) ? ` · 已开赛 ${esc(fmtDuration(Date.now() - new Date(r.commence_time)))}` : ""}</div></td>
     <td>${esc(describeMarket(r.market_key, r.sport_key))}</td>
     <td>${esc(platformTitle(r.primary_bookmaker))}<div class="muted small">${esc(r.primary_bet_description)} @ ${r.primary_odds_decimal.toFixed(2)}</div></td>
-    <td>${esc(platformTitle(r.hedge_platform))}<div class="muted small">${esc(r.hedge_bet_description)} @ ${r.hedge_odds_decimal.toFixed(2)}</div></td>
+    <td>${hedgePlatformsHtml(r)}${r.hedge_options > 1 ? ` <span class="tag" style="margin:0" title="这一注共有 ${r.hedge_options} 个不同的对冲价格，这是第 ${r.hedge_rank} 好">${r.hedge_rank === 1 ? "最佳对冲" : `第 ${r.hedge_rank} 选择`}</span>` : ""}<div class="muted small">${esc(r.hedge_bet_description)}${r.hedge_market_key && r.hedge_market_key !== r.market_key ? (r.hedge_market_key.startsWith("alternate_") ? "（Alt 盘）" : "（主盘）") : ""} @ ${r.hedge_odds_decimal.toFixed(2)}</div></td>
     <td class="num">${fmt2(r.hedge_stake)}${r.hedge_stake !== r.hedge_stake_exact ? `<div class="muted small">精确 ${fmt2(r.hedge_stake_exact)}</div>` : ""}</td>
     <td class="num ${r.locked_profit >= 0 ? "profit" : "loss"}">${fmt2(r.locked_profit)}${r.profit_if_base_wins !== r.profit_if_hedge_wins ? `<div class="muted small" style="font-weight:400">${fmt2(r.profit_if_base_wins)} / ${fmt2(r.profit_if_hedge_wins)}</div>` : ""}</td>
     <td class="num">${fmt2(r.conversion_rate_pct)}%</td></tr>`).join("");
 }
 
 function showDetails(r) {
+  const live = isLive(r.commence_time);
   const rows = [
+    ["比赛状态", statusText(r.commence_time)],
     ["sec", "主注 Base"],
     ["平台", platformTitle(r.primary_bookmaker)], ["下注", r.primary_bet_description || r.primary_selection],
     ["小数赔率", r.primary_odds_decimal.toFixed(3)], ["美式赔率", fmtAmerican(r.primary_odds_decimal)],
     ["本金", fmt2(r.primary_stake)], ["潜在回报", fmt2(r.primary_return)],
+    ["赔率更新于", oddsAgeText(r.primary_last_update, live)],
     ["sec", "对冲 Hedge"],
-    ["平台", platformTitle(r.hedge_platform)], ["下注", r.hedge_bet_description || r.hedge_selection],
+    ["平台", hedgePlatformNames(r).join(" / ")],
+    ...(r.hedge_tied?.length ? [["", `以上 ${hedgePlatformNames(r).length} 个平台赔率相同，任选一个下对冲即可`]] : []),
+    ...(r.hedge_options > 1 ? [["对冲价格排名", `这一注有 ${r.hedge_options} 个不同的对冲价格，这是第 ${r.hedge_rank} 好${r.hedge_rank === 1 ? "（最佳）" : ""}`]] : []),
+    ["下注", r.hedge_bet_description || r.hedge_selection],
     ["小数赔率", r.hedge_odds_decimal.toFixed(3)], ["美式赔率", fmtAmerican(r.hedge_odds_decimal)],
     ["对冲金额", fmt2(r.hedge_stake)],
     ...(r.hedge_stake !== r.hedge_stake_exact ? [["精确对冲金额", fmt2(r.hedge_stake_exact)]] : []),
     ["潜在回报", fmt2(r.hedge_return)],
+    ["赔率更新于", oddsAgeText(r.hedge_last_update, live)],
     ["sec", "汇总"],
     ["现金总投入", fmt2(r.total_cash_staked)],
     ["主注赢时利润", fmt2(r.profit_if_base_wins)],
@@ -1194,7 +1411,8 @@ function showDetails(r) {
     ["锁定利润（较差一边）", fmt2(r.locked_profit)], ["转化率", fmt2(r.conversion_rate_pct) + "%"],
   ];
   openModal(`<h3>${esc(r.event_name)}</h3>
-    <div class="sub">${esc(sportTitle(r.sport_key))} · ${esc(describeMarket(r.market_key, r.sport_key))} · ${esc(localTime(r.commence_time))}</div>
+    <div class="sub">${liveBadge(r.commence_time)}${esc(sportTitle(r.sport_key))} · ${esc(describeMarket(r.market_key, r.sport_key))} · ${esc(localTime(r.commence_time))}</div>
+    ${live ? `<div class="status warn" style="margin:0 0 12px">这是进行中的比赛：滚球赔率随时会变或暂停投注。两边要尽快下单，下单前在平台上核对赔率；标 ⚠ 的赔率已超过 1 分钟没有更新。</div>` : ""}
     <div class="kv">${rows.map(([k, v]) => (k === "sec" ? `<div class="sec">${esc(v)}</div>` : `<div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>`)).join("")}</div>
     <div class="actions"><button class="btn" id="mClose">关闭</button></div>`);
   $("mClose").onclick = closeModal;
@@ -1228,11 +1446,11 @@ function exportCSV() {
   const fields = ["event_name","sport_key","market_key","commence_time","primary_bookmaker","primary_selection","primary_bet_description",
     "primary_odds_decimal","primary_odds_american","primary_point","primary_stake","primary_return","hedge_platform","hedge_selection",
     "hedge_bet_description","hedge_odds_decimal","hedge_odds_american","hedge_point","hedge_stake","hedge_stake_exact","hedge_return","total_cash_staked",
-    "profit_if_base_wins","profit_if_hedge_wins","locked_profit","conversion_rate_pct"];
+    "profit_if_base_wins","profit_if_hedge_wins","locked_profit","conversion_rate_pct","is_live","primary_last_update","hedge_last_update","hedge_platforms_same_odds","hedge_rank","hedge_options"];
   const cell = (v) => { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   const lines = [fields.join(",")];
   for (const r of state.lastResults) {
-    const row = { ...r, primary_odds_american: decimalToAmerican(r.primary_odds_decimal), hedge_odds_american: decimalToAmerican(r.hedge_odds_decimal) };
+    const row = { ...r, hedge_platforms_same_odds: hedgePlatformNames(r).join("; "), is_live: isLive(r.commence_time), primary_odds_american: decimalToAmerican(r.primary_odds_decimal), hedge_odds_american: decimalToAmerican(r.hedge_odds_decimal) };
     lines.push(fields.map((f) => cell(row[f])).join(","));
   }
   download(`hedge_results_${stamp()}.csv`, "﻿" + lines.join("\n"), "text/csv;charset=utf-8");
@@ -1256,7 +1474,8 @@ function originProblem() {
 function init() {
   const op = originProblem();
   if (op) { const w = $("originWarn"); w.style.display = "flex"; w.innerHTML = `<span>⚠️ ${esc(op)}</span>`; }
-  populateStatic(); restoreRounding(); refreshLeague(); refreshHedges(); refreshMarkets(); refreshMode(); renderCacheInfo();
+  populateStatic(); restoreRounding();
+ refreshLeague(); refreshHedges(); refreshMarkets(); refreshMode(); renderCacheInfo();
   const saved = lsGet(LS_KEY);
   if (saved) {
     $("apiKey").value = saved; $("rememberKey").checked = true;
@@ -1293,7 +1512,11 @@ function init() {
     const tr = e.target.closest("tr[data-i]"); if (tr) showDetails(state.lastResults[+tr.dataset.i]);
   });
   $("csvBtn").onclick = exportCSV; $("jsonBtn").onclick = exportJSON;
+  $("topN").addEventListener("change", onTopNChange);
+  $("marketFilter").addEventListener("change", onTopNChange);
+  { const n = lsGet(LS_TOPN); if (n && [...$("topN").options].some((o) => o.value === n)) $("topN").value = n; }
   ["roundStep", "roundDir"].forEach((id) => $(id).addEventListener("change", onRoundingChange));
+  $("liveMode").addEventListener("change", onLiveModeChange);
   $("roundCustom").addEventListener("change", onRoundingChange);
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("modalBg").classList.contains("open")) { const c = $("mCancel") || $("mClose"); c ? c.click() : closeModal(); } });
   $("themeBtn").onclick = () => {
