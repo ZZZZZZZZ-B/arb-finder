@@ -275,6 +275,7 @@ const CONFIG = {
   sports: {
     nba: { group: "basketball", sport_key: "basketball_nba", title: "NBA" },
     wnba: { group: "basketball", sport_key: "basketball_wnba", title: "WNBA" },
+    ncaam: { group: "basketball", sport_key: "basketball_ncaab", title: "NCAAM 大学男篮" },
     nhl: { group: "hockey", sport_key: "icehockey_nhl", title: "NHL" },
     mlb: { group: "baseball", sport_key: "baseball_mlb", title: "MLB" },
     nfl: { group: "football", sport_key: "americanfootball_nfl", title: "NFL" },
@@ -299,10 +300,10 @@ const CONFIG = {
     credit_thresholds: { core_market: 20, alt_market: 50 },
     optional_markets: {
       alternate_spreads: { title: "Alternate Spread", market_key: "alternate_spreads",
-        sport_keys: ["basketball_nba","basketball_wnba","icehockey_nhl","baseball_mlb","americanfootball_nfl","americanfootball_ncaaf","americanfootball_cfl"],
+        sport_keys: ["basketball_nba","basketball_wnba","basketball_ncaab","icehockey_nhl","baseball_mlb","americanfootball_nfl","americanfootball_ncaaf","americanfootball_cfl"],
         sport_prefixes: ["soccer_"] },
       alternate_totals: { title: "Alternate Total / Goals", market_key: "alternate_totals",
-        sport_keys: ["basketball_nba","basketball_wnba","icehockey_nhl","baseball_mlb","americanfootball_nfl","americanfootball_ncaaf","americanfootball_cfl"],
+        sport_keys: ["basketball_nba","basketball_wnba","basketball_ncaab","icehockey_nhl","baseball_mlb","americanfootball_nfl","americanfootball_ncaaf","americanfootball_cfl"],
         sport_prefixes: ["soccer_"] },
     },
   },
@@ -330,13 +331,13 @@ const CONFIG = {
     // Betway has no Ontario feed on The Odds API; the UK feed's odds may differ from Betway Ontario.
     betway: { enabled: false, title: "Betway", bookmaker_key: "betway", note: "英国版赔率，可能与安大略不同" },
     // From own_api, not The Odds API: free, so on by default.
-    bet99: { enabled: true, title: "BET99", bookmaker_key: "bet99_ca_on", own: true, note: "仅 NBA / NHL / NFL 赛前" },
-    caesars: { enabled: true, title: "Caesars", bookmaker_key: "caesars_ca_on", own: true, note: "仅 NBA / NHL / NFL 赛前" },
+    bet99: { enabled: true, title: "BET99", bookmaker_key: "bet99_ca_on", own: true, note: "仅 NBA / NCAAM / NHL / NFL 赛前" },
+    caesars: { enabled: true, title: "Caesars", bookmaker_key: "caesars_ca_on", own: true, note: "仅 NBA / NCAAM / NHL / NFL 赛前" },
   },
   // Same format and event ids as The Odds API, so its quotes group with the others by event_id. It takes any
   // non-empty key; api_key is a placeholder, and the user's Odds API keys must never be sent here.
   own_api: { base_url: "https://oddsapi.bettong-bushi.ts.net", api_key: "arbfinder",
-    sport_keys: ["basketball_nba", "icehockey_nhl", "americanfootball_nfl"], max_retries: 1, backoff_ms: 2000 },
+    sport_keys: ["basketball_nba", "basketball_ncaab", "icehockey_nhl", "americanfootball_nfl"], max_retries: 1, backoff_ms: 2000 },
   odds_api: { base_url: "https://api.the-odds-api.com", odds_format: "decimal", date_format: "iso", max_retries: 3, backoff_ms: 2000 },
 };
 
@@ -1143,7 +1144,7 @@ const ownCovers = (name, sk) => !isOwnPlatform(name) || CONFIG.own_api.sport_key
 // Without the base book or any hedge book a sport can give no row, so don't spend credits on the other side.
 const sportUsable = (ctx, sk) => ownCovers(ctx.base, sk) && ctx.hedges.some((h) => ownCovers(h, sk));
 const noSportsMessage = (ctx) => (isOwnPlatform(ctx.base) || ctx.hedges.every(isOwnPlatform)
-  ? "BET99 和 Caesars 只有 NBA / NHL / NFL 的赛前赔率，所选联赛没有可用赛事。" : "所选联赛当前没有活跃赛事。");
+  ? "BET99 和 Caesars 只有 NBA / NCAAM / NHL / NFL 的赛前赔率，所选联赛没有可用赛事。" : "所选联赛当前没有活跃赛事。");
 /* Asks each source for its own books and joins the quotes. call(client, books) is one request. A failing own API
  * only drops its books for this run, unless the base book is one of them. */
 async function fetchFromSources(client, ctx, sk, call) {
