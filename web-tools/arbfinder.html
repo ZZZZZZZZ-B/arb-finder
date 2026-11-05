@@ -64,6 +64,49 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .spacer{flex:1}
 .keybox{display:flex;gap:8px}.keybox input{font-family:var(--mono)}
+[hidden]{display:none!important}
+@property --kc-spin{syntax:"<angle>";inherits:false;initial-value:0deg}
+.keychoice{display:grid;grid-template-columns:1.45fr 1fr;gap:14px;margin-bottom:6px}
+@media (max-width:640px){.keychoice{grid-template-columns:1fr}.kc-own .kc-body{min-height:0}}
+.keychoice+.note{margin-top:12px}
+.kc{position:relative;display:block;cursor:pointer;isolation:isolate;--kc-gold:#c08a1e}
+.kc input{position:absolute;opacity:0;width:0;height:0}
+.kc-body{position:relative;display:flex;flex-direction:column;gap:6px;height:100%;min-height:136px;padding:16px 18px;border-radius:13px;background:var(--surface);transition:transform .18s ease}
+.kc-body::before{content:"";position:absolute;inset:-2px;z-index:-1;border-radius:15px;background:var(--line)}
+.kc-body::after{content:"";position:absolute;inset:-2px;z-index:-2;border-radius:15px;opacity:0;filter:blur(16px);background:var(--accent);transition:opacity .25s ease}
+.kc:hover .kc-body{transform:translateY(-2px)}
+.kc input:checked+.kc-body::before{background:var(--accent)}
+.kc input:checked+.kc-body::after{opacity:.28}
+.kc-pool input:checked+.kc-body::before,.kc-pool input:checked+.kc-body::after{background:conic-gradient(from var(--kc-spin),var(--accent),var(--kc-gold),var(--accent-soft),var(--accent));animation:kc-spin 5s linear infinite}
+.kc-pool input:checked+.kc-body::after{opacity:.5}
+@keyframes kc-spin{to{--kc-spin:360deg}}
+.kc input:focus-visible+.kc-body{outline:2px solid var(--line-strong);outline-offset:4px}
+.kc input:disabled+.kc-body{opacity:.55;cursor:not-allowed}
+.kc-head{display:flex;align-items:center;gap:8px;font-weight:700;font-size:15px;padding-right:26px}
+.kc-head svg{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;color:var(--muted)}
+.kc input:checked+.kc-body .kc-head svg{color:var(--accent)}
+.kc-pool .kc-head svg{color:var(--kc-gold)}
+.kc-tag{font:600 11px var(--mono);padding:1px 7px;border-radius:999px;background:var(--accent-soft);color:var(--accent);white-space:nowrap}
+.kc-check{position:absolute;top:14px;right:14px;width:20px;height:20px;border-radius:50%;border:1.5px solid var(--line);display:grid;place-items:center}
+.kc-check svg{width:12px;height:12px;fill:none;stroke:var(--accent-ink);stroke-width:3.2;stroke-linecap:round;stroke-linejoin:round;opacity:0}
+.kc input:checked+.kc-body .kc-check{background:var(--accent);border-color:var(--accent)}
+.kc input:checked+.kc-body .kc-check svg{opacity:1}
+.kc-credit{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-top:auto}
+.kc-num{font:800 38px/1.1 var(--mono);letter-spacing:-.03em;color:var(--accent)}
+@supports ((-webkit-background-clip:text) or (background-clip:text)){
+  .kc-num{background:linear-gradient(100deg,var(--accent) 30%,var(--kc-gold) 50%,var(--accent) 70%);background-size:250% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:kc-shine 5s ease-in-out infinite}
+}
+@keyframes kc-shine{0%,100%{background-position:100% 0}50%{background-position:0 0}}
+.kc-credit small{color:var(--muted);font-size:12px}
+.kc-credit.bad .kc-num{background:none;color:var(--danger);animation:none}
+.kc-meta{display:flex;align-items:center;gap:7px;font:500 12px var(--mono);color:var(--muted)}
+.kc-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none;animation:pulse 1.6s ease-in-out infinite}
+.kc-credit.bad+.kc-meta .kc-dot{background:var(--danger);animation:none}
+.kc-desc{color:var(--muted);font-size:13px}
+@media (prefers-reduced-motion: reduce){
+  .kc-pool input:checked+.kc-body::before,.kc-pool input:checked+.kc-body::after,.kc-num,.kc-dot{animation:none}
+  .kc-body,.kc-body::after{transition:none}.kc:hover .kc-body{transform:none}
+}
 .pill{display:inline-flex;align-items:center;gap:6px;font:500 12px var(--mono);padding:3px 9px;border-radius:999px;border:1.5px solid var(--line);color:var(--muted)}
 .pill.ok{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
 .pill.bad{border-color:var(--danger);color:var(--danger);background:var(--danger-soft)}
@@ -121,8 +164,32 @@ a{color:var(--accent)}
 
   <!-- 1. API Key -->
   <section class="card">
-    <h2><span class="step">1</span>The Odds API Key</h2>
-    <div class="field top">
+    <h2><span class="step">1</span>选择额度来源</h2>
+    <div class="keychoice" role="radiogroup" aria-label="额度来源">
+      <label class="kc kc-pool">
+        <input type="radio" name="keyMode" value="pool">
+        <span class="kc-body">
+          <span class="kc-head">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>Super Key Pool<span class="kc-tag">免 Key · 直接用</span>
+          </span>
+          <span class="kc-check"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg></span>
+          <span class="kc-credit" id="poolCreditBox"><span class="kc-num" id="poolCredit">—</span><small>credits 可用</small></span>
+          <span class="kc-meta"><span class="kc-dot"></span><span id="poolMeta" aria-live="polite">正在读取额度…</span></span>
+        </span>
+      </label>
+      <label class="kc kc-own">
+        <input type="radio" name="keyMode" value="own">
+        <span class="kc-body">
+          <span class="kc-head">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M16 7l3 3"/></svg>自己的 Key
+          </span>
+          <span class="kc-check"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg></span>
+          <span class="kc-desc">用你自己的 The Odds API Key，额度由你自己管理。</span>
+        </span>
+      </label>
+    </div>
+    <div class="note" data-key-mode="pool">不用注册，也不用填 Key，直接往下选赛事就行。Pool 的额度是所有使用者共用的，用完后可以换成自己的 Key。BET99 和 Caesars 的赔率不消耗额度。</div>
+    <div class="field top" data-key-mode="own" hidden style="margin-top:8px">
       <label for="apiKey" class="req">API Key</label>
       <div>
         <div class="keybox">
@@ -342,6 +409,7 @@ const CONFIG = {
 };
 
 const LS_KEY = "arbfinder.apiKeys";
+const LS_MODE = "arbfinder.keyMode";
 const LS_CACHE = "arbfinder.oddsCache.v1";
 
 /* ============================================================
@@ -691,8 +759,10 @@ class KeyPool {
 
 class OddsClient {
   constructor(pool) { this.pool = pool; this.sportsCache = null; this.creditsUsed = 0; }
+  urlFor(path) { return CONFIG.odds_api.base_url + path; }
+  async refusal() { return null; }
   async request(path, params = {}) {
-    const { base_url, max_retries, backoff_ms } = CONFIG.odds_api;
+    const { max_retries, backoff_ms } = CONFIG.odds_api;
     let lastErr = null;
     for (let retry = 0; retry <= max_retries; retry++) {
       const key = this.pool.next();
@@ -701,7 +771,7 @@ class OddsClient {
       qs.set("apiKey", key);
       let resp;
       try {
-        resp = await fetch(`${base_url}${path}?${qs}`, { method: "GET" });
+        resp = await fetch(`${this.urlFor(path)}?${qs}`, { method: "GET" });
       } catch (e) {
         lastErr = e;
         log(`✗ ${path} 网络错误：${e.message}`);
@@ -717,6 +787,8 @@ class OddsClient {
       log(`${resp.status} ${path}  key=${maskKey(key)}  本次=${last ?? "?"}  已用=${used ?? "?"}  剩余=${rem ?? "?"}`);
       updateQuota(this.pool);
 
+      const refused = await this.refusal(resp);
+      if (refused) throw refused;
       if (resp.status === 429) {
         if (retry >= max_retries) throw new OddsAPIError("The Odds API 限流（429），重试后仍失败。", 429);
         await sleep(backoff_ms * 2 ** retry); continue;
@@ -767,6 +839,31 @@ class OddsClient {
     const data = await this.request(`/v4/sports/${encodeURIComponent(sportKey)}/events/${encodeURIComponent(eventId)}/odds`, {
       bookmakers: bookmakers.join(","), markets: markets.join(","), oddsFormat: CONFIG.odds_api.odds_format, dateFormat: CONFIG.odds_api.date_format });
     return parseOddsPayload(data, sportKey);
+  }
+}
+/* Super Key Pool: the same calls through the own API's /v4/pool/, which needs no key from the visitor. It picks a key
+ * and retries upstream itself, so what it refuses here is final. The x-requests-* headers are the whole pool's: 0 now
+ * doesn't end anything, keys may be added before the next request. */
+class SuperKeyPool extends KeyPool {
+  report(k, remaining, used) { this.quota[k] = { remaining, used }; }
+}
+const POOL_REFUSALS = {
+  MISSING_KEY: { text: "Super Key Pool 暂未开放，可以先换成自己的 Key。", fatal: true },
+  INVALID_KEY: { text: "Super Key Pool 暂未开放，可以先换成自己的 Key。", fatal: true },
+  POOL_EMPTY: { text: "Super Key Pool 现在没有可用的 key，额度可能已用完，可以换成自己的 Key。", fatal: true },
+  POOL_NO_PROXY: { text: "Super Key Pool 暂时不可用，可以先换成自己的 Key。", fatal: true },
+  POOL_DAILY_LIMIT: { text: "Super Key Pool 今天的额度已用完，可以换成自己的 Key。", fatal: true },
+  POOL_UNAVAILABLE: { text: "Super Key Pool 这次没有查到，请稍后再试。", fatal: false },
+};
+class PoolOddsClient extends OddsClient {
+  urlFor(path) { return CONFIG.own_api.base_url + path.replace("/v4/", "/v4/pool/"); }
+  async refusal(resp) {
+    if (resp.ok) return null;
+    const known = POOL_REFUSALS[(await resp.clone().json().catch(() => ({}))).error_code];
+    if (!known) return null;
+    const err = new OddsAPIError(known.text, resp.status);
+    err.keyProblem = known.fatal;
+    return err;
   }
 }
 class OwnOddsClient extends OddsClient {
@@ -890,6 +987,7 @@ function setStatus(msg, kind = "", spinning = false) {
   el.innerHTML = (spinning ? '<span class="spin"></span>' : "") + `<span>${esc(msg)}</span>`;
 }
 function updateQuota(pool) {
+  if (pool instanceof SuperKeyPool) return updatePoolPill(pool);
   const pill = $("quotaPill");
   const vals = Object.values(pool.quota).filter((q) => q.remaining != null);
   if (!vals.length) { pill.className = "pill"; pill.textContent = "额度：未知"; return; }
@@ -898,9 +996,60 @@ function updateQuota(pool) {
   pill.className = "pill " + (remaining > 0 ? "ok" : "bad");
   pill.textContent = `剩余 ${remaining} · 已用 ${used}${pool.keys.length > 1 ? ` · ${pool.keys.length} 个 key` : ""}`;
 }
+/* The Odds API has no balance call: the pill above reads the x-requests-* headers of each answer. The pool's
+ * total comes from the own API, which keeps every key's balance. A late answer must not replace a newer one. */
+let poolSeq = 0, poolTimer = null, poolKeysText = "", poolShown = 0, poolAnim = 0;
+function showPoolCredit(n) {
+  const el = $("poolCredit"), from = poolShown, fmt = (v) => v.toLocaleString("en-US");
+  cancelAnimationFrame(poolAnim);
+  poolShown = n;
+  if (from === n || matchMedia("(prefers-reduced-motion: reduce)").matches) { el.textContent = fmt(n); return; }
+  const began = performance.now();
+  const step = (now) => {
+    const t = Math.min((now - began) / 700, 1);
+    el.textContent = fmt(Math.round(from + (n - from) * (1 - (1 - t) ** 3)));
+    if (t < 1) poolAnim = requestAnimationFrame(step);
+  };
+  poolAnim = requestAnimationFrame(step);
+}
+function showPool(remaining, meta) {
+  const box = $("poolCreditBox");
+  if (remaining == null) { cancelAnimationFrame(poolAnim); $("poolCredit").textContent = "—"; poolShown = 0; }
+  else showPoolCredit(remaining);
+  box.classList.toggle("bad", !(remaining > 0));
+  $("poolMeta").textContent = meta;
+}
+const poolMetaText = (remaining, used) => (remaining > 0 ? `已用 ${used ?? "?"}${poolKeysText}` : "暂无可用额度，可以换成自己的 Key");
+function updatePoolPill(pool) {
+  const q = Object.values(pool.quota)[0];
+  if (q?.remaining == null) return;
+  poolSeq++;
+  showPool(q.remaining, poolMetaText(q.remaining, q.used));
+  // The headers have only the totals; ask for the rest once the requests pause. It reads the server's cache: free.
+  clearTimeout(poolTimer); poolTimer = setTimeout(refreshPoolCredit, 800);
+}
+async function refreshPoolCredit() {
+  const seq = ++poolSeq;
+  const show = (...a) => { if (seq === poolSeq) showPool(...a); };
+  try {
+    const resp = await fetch(`${CONFIG.own_api.base_url}/v4/pool/status`);
+    if (!resp.ok) return show(null, resp.status === 401 ? "Pool 暂未开放" : `额度读取失败（${resp.status}）`);
+    const t = await resp.json();
+    if (seq === poolSeq) poolKeysText = ` · ${t.usable}/${t.keys} 个 key 可用`;
+    show(t.remaining, poolMetaText(t.remaining, t.used));
+  } catch { show(null, "额度读取失败"); }
+}
 function getKeys() { return uniq($("apiKey").value.split(/[,;\n\s]+/).map((s) => s.trim()).filter(Boolean)); }
+const keyMode = () => (document.querySelector('input[name="keyMode"]:checked')?.value === "own" ? "own" : "pool");
+const hasCredentials = () => keyMode() === "pool" || getKeys().length > 0;
+function setKeyMode(mode) {
+  document.querySelector(`input[name="keyMode"][value="${mode}"]`).checked = true;
+  document.querySelectorAll("[data-key-mode]").forEach((el) => { el.hidden = el.dataset.keyMode !== mode; });
+  refreshRunButton();
+}
 let sharedPool = null, sharedPoolSig = "";
 function getClient() {
+  if (keyMode() === "pool") return new PoolOddsClient(new SuperKeyPool([CONFIG.own_api.api_key]));
   const keys = getKeys();
   const sig = keys.join("|");
   if (!sharedPool || sig !== sharedPoolSig) { sharedPool = new KeyPool(keys); sharedPoolSig = sig; }
@@ -910,6 +1059,7 @@ function getClient() {
 function setBusy(b) {
   state.busy = b;
   $("findBtn").disabled = b; $("testKey").disabled = b;
+  document.querySelectorAll('input[name="keyMode"]').forEach((r) => { r.disabled = b; });
   refreshRunButton();
 }
 
@@ -1018,7 +1168,7 @@ function currentScope() {
   return JSON.stringify([s.getTime(), e.getTime(), $("period").value, $("league").value, $("keyword").value, $("liveMode").value]);
 }
 function validateForm() {
-  if (!getKeys().length) return "请先输入 API Key。";
+  if (!hasCredentials()) return "请先输入 API Key。";
   if (!checkedValues("hedgeBox").length) return "至少选择一个对冲平台。";
   const period = $("period").value;
   if (period !== "full-game") {
@@ -1515,14 +1665,21 @@ function init() {
   if (op) { const w = $("originWarn"); w.style.display = "flex"; w.innerHTML = `<span>⚠️ ${esc(op)}</span>`; }
   populateStatic(); restoreRounding();
  refreshLeague(); refreshHedges(); refreshMarkets(); refreshMode(); renderCacheInfo();
-  const saved = lsGet(LS_KEY);
-  if (saved) {
-    $("apiKey").value = saved; $("rememberKey").checked = true;
-    // Load the live sports list (free) so tennis tournaments / soccer leagues appear in the League menu
+  // Someone who saved a key before the pool existed stays on their own key; everyone else starts on the pool.
+  const saved = lsGet(LS_KEY), savedMode = lsGet(LS_MODE);
+  if (saved) { $("apiKey").value = saved; $("rememberKey").checked = true; }
+  // Load the live sports list (free) so tennis tournaments / soccer leagues appear in the League menu
+  const loadSports = () => {
+    if (!hasCredentials()) return;
     try { getClient().getSports().catch(() => {}); } catch {}
-  }
+  };
+  setKeyMode(savedMode === "pool" || savedMode === "own" ? savedMode : saved ? "own" : "pool");
+  refreshPoolCredit();
+  setInterval(() => { if (!document.hidden) refreshPoolCredit(); }, 60000);
+  loadSports();
 
-  const persistKey = () => { if ($("rememberKey").checked) lsSet(LS_KEY, $("apiKey").value.trim()); else lsDel(LS_KEY); };
+  const persistKey = () => { if ($("rememberKey").checked && $("apiKey").value.trim()) lsSet(LS_KEY, $("apiKey").value.trim()); else lsDel(LS_KEY); };
+  document.querySelectorAll('input[name="keyMode"]').forEach((r) => r.addEventListener("change", () => { setKeyMode(r.value); lsSet(LS_MODE, r.value); loadSports(); }));
   $("apiKey").addEventListener("input", () => { persistKey(); refreshRunButton(); });
   $("rememberKey").addEventListener("change", persistKey);
   $("toggleKey").onclick = () => { const i = $("apiKey"); const show = i.type === "password"; i.type = show ? "text" : "password"; $("toggleKey").textContent = show ? "隐藏" : "显示"; };
