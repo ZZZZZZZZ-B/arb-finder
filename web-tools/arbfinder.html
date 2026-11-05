@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ArbFinder 促销对冲</title>
-<meta name="description" content="Sportsbook promotion hedge analyzer (Bonus Bet / Profit Boost / No Sweat) powered by The Odds API. Runs entirely in your browser.">
+<meta name="description" content="Sportsbook promotion hedge analyzer (Bonus Bet / Profit Boost / No Sweat) powered by The Odds API and a companion BET99 / Caesars feed. Runs entirely in your browser.">
 <style>
 :root{
   --bg:#f6f4ef; --surface:#fffdf8; --surface-2:#f0ede5; --ink:#1b1a17; --muted:#6b675e; --line:#d9d4c7; --line-strong:#1b1a17;
@@ -112,7 +112,7 @@ a{color:var(--accent)}
   <div class="titlebar">
     <div>
       <h1>ArbFinder</h1>
-      <p>Sportsbook 促销对冲计算器 · Bonus Bet / Profit Boost / No Sweat · 数据来自 The Odds API</p>
+      <p>Sportsbook 促销对冲计算器 · Bonus Bet / Profit Boost / No Sweat · 数据来自 The Odds API 和自有接口（BET99、Caesars）</p>
     </div>
     <button class="btn ghost" id="themeBtn" type="button">切换深浅色</button>
   </div>
@@ -135,7 +135,7 @@ a{color:var(--accent)}
           <span class="spacer"></span>
           <span class="pill" id="quotaPill">额度：未知</span>
         </div>
-        <div class="note">Key 只保存在你的浏览器里，只会发送到 api.the-odds-api.com。还没有 Key？到 <a href="https://the-odds-api.com/" target="_blank" rel="noopener">the-odds-api.com</a> 申请。</div>
+        <div class="note">Key 只保存在你的浏览器里，只会发送到 api.the-odds-api.com。BET99 和 Caesars 的赔率来自自有接口，不消耗额度，也不会收到你的 Key。还没有 Key？到 <a href="https://the-odds-api.com/" target="_blank" rel="noopener">the-odds-api.com</a> 申请。</div>
       </div>
     </div>
   </section>
@@ -195,7 +195,7 @@ a{color:var(--accent)}
         <div class="field top"><span class="lbl" id="marketsLabel">Alt 盘口</span><div class="checks" id="marketBox" style="flex-direction:column"></div></div>
         <div class="field top"><span class="lbl">数据来源</span>
           <div>
-            <label class="chk"><input type="checkbox" id="fetchLatest" checked> 拉取最新 Odds API 数据</label>
+            <label class="chk"><input type="checkbox" id="fetchLatest" checked> 拉取最新赔率</label>
             <div class="note" id="cacheInfo">取消勾选则使用上次缓存的赔率重算，不消耗额度。</div>
           </div></div>
       </div>
@@ -250,7 +250,7 @@ a{color:var(--accent)}
     <details class="log" style="margin-top:14px"><summary>API 请求日志</summary><div id="logBox"></div></details>
   </section>
 
-  <footer>仅做计算，不会下注，也不构成投注建议。所有请求直接从你的浏览器发往 The Odds API。</footer>
+  <footer>仅做计算，不会下注，也不构成投注建议。所有请求直接从你的浏览器发往 The Odds API 和自有接口（BET99、Caesars）。</footer>
 </div>
 
 <div class="modal-bg" id="modalBg"><div class="modal" id="modal" role="dialog" aria-modal="true"></div></div>
@@ -329,12 +329,14 @@ const CONFIG = {
     playnow: { enabled: false, title: "PlayNow", bookmaker_key: "playnow_ca", note: "BC 等省" },
     // Betway has no Ontario feed on The Odds API; the UK feed's odds may differ from Betway Ontario.
     betway: { enabled: false, title: "Betway", bookmaker_key: "betway", note: "英国版赔率，可能与安大略不同" },
-    // Paid-plan bookmakers
-    bet99: { enabled: false, title: "BET99", bookmaker_key: "bet99_ca_on", paid: true, note: "付费套餐" },
-    caesars: { enabled: false, title: "Caesars", bookmaker_key: "williamhill_us", paid: true, note: "付费套餐" },
-    // The Odds API has no North-American Bet365 feed: bet365_au is Australia-only (AFL/NRL) and paid plans only.
-    bet365: { enabled: false, title: "Bet365", bookmaker_key: "bet365_au", paid: true, note: "仅澳洲 AFL/NRL · 付费套餐" },
+    // From own_api, not The Odds API: free, so on by default.
+    bet99: { enabled: true, title: "BET99", bookmaker_key: "bet99_ca_on", own: true, note: "仅 NBA / NHL / NFL 赛前" },
+    caesars: { enabled: true, title: "Caesars", bookmaker_key: "caesars_ca_on", own: true, note: "仅 NBA / NHL / NFL 赛前" },
   },
+  // Same format and event ids as The Odds API, so its quotes group with the others by event_id. It takes any
+  // non-empty key; api_key is a placeholder, and the user's Odds API keys must never be sent here.
+  own_api: { base_url: "https://oddsapi.bettong-bushi.ts.net", api_key: "arbfinder",
+    sport_keys: ["basketball_nba", "icehockey_nhl", "americanfootball_nfl"], max_retries: 1, backoff_ms: 2000 },
   odds_api: { base_url: "https://api.the-odds-api.com", odds_format: "decimal", date_format: "iso", max_retries: 3, backoff_ms: 2000 },
 };
 
@@ -766,6 +768,31 @@ class OddsClient {
     return parseOddsPayload(data, sportKey);
   }
 }
+class OwnOddsClient extends OddsClient {
+  constructor() { super(null); }
+  async request(path, params = {}) {
+    const { base_url, api_key, max_retries, backoff_ms } = CONFIG.own_api;
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v != null && v !== "") qs.set(k, v);
+    qs.set("apiKey", api_key);
+    for (let retry = 0; ; retry++) {
+      let resp = null, problem;
+      try {
+        resp = await fetch(`${base_url}${path}?${qs}`, { method: "GET" });
+        problem = `${resp.status}`;
+      } catch (e) { problem = e.message; }
+      log(`${problem} 自有接口 ${path}`);
+      if (resp?.ok) return resp.json();
+      if (resp && resp.status !== 429 && resp.status < 500) {
+        const t = await resp.text().catch(() => "");
+        throw new OddsAPIError(`自有接口请求错误 ${path}: ${resp.status}: ${t.slice(0, 300)}`, resp.status);
+      }
+      if (retry >= max_retries) throw new OddsAPIError(`自有接口暂时不可用（${problem}）`, resp?.status);
+      await sleep(backoff_ms);
+    }
+  }
+}
+const ownClient = new OwnOddsClient();
 function parseOddsPayload(payload, sportKey) {
   const events = Array.isArray(payload) ? payload : payload && typeof payload === "object" ? [payload] : [];
   const quotes = [];
@@ -1095,8 +1122,9 @@ function buildContext() {
     rounding: readRounding(),
   };
   if (ctx.hedges.includes(ctx.base)) throw new Error("主平台不能同时作为对冲平台。");
-  ctx.platforms = [ctx.base, ...ctx.hedges];          // platform names still requested (paid ones may be dropped)
-  ctx.regions = regionsFactor(ctx.platforms.length);
+  ctx.platforms = [ctx.base, ...ctx.hedges];          // platform names still requested (own API ones may be dropped)
+  const paying = ctx.platforms.filter((n) => !isOwnPlatform(n)).length;
+  ctx.regions = paying ? regionsFactor(paying) : 0;   // only The Odds API's books cost credits
   if (selectedEvents.length) ctx.sportKeys = uniq(selectedEvents.map((e) => e.sport_key));
   else if (period === "full-game" && state.eventsScope && state.eventsScope === currentScope()) {
     ctx.sportKeys = uniq(state.events.map((e) => e.sport_key)).sort();
@@ -1107,36 +1135,45 @@ function buildContext() {
 
 async function ensureSportKeys(client, ctx) {
   if (!ctx.sportKeys) ctx.sportKeys = await resolveActiveSportKeys(client, ctx.league, ctx.period);
+  ctx.sportKeys = ctx.sportKeys.filter((sk) => sportUsable(ctx, sk));
   return ctx.sportKeys;
 }
-/* If the API rejects a request because of a paid / region-locked bookmaker (e.g. Caesars),
- * drop those bookmakers and retry instead of failing the whole sport. */
-const isPaidPlatform = (name) => !!CONFIG.platforms[name]?.paid;
-const booksFor = (ctx, sk) => uniq(ctx.platforms.map((n) => apiBookmakerKey(n, sk)));
-async function withBookmakerFallback(ctx, sk, fn) {
-  for (;;) {
-    try { return await fn(booksFor(ctx, sk)); }
+const isOwnPlatform = (name) => !!CONFIG.platforms[name]?.own;
+const ownCovers = (name, sk) => !isOwnPlatform(name) || CONFIG.own_api.sport_keys.includes(sk);
+// Without the base book or any hedge book a sport can give no row, so don't spend credits on the other side.
+const sportUsable = (ctx, sk) => ownCovers(ctx.base, sk) && ctx.hedges.some((h) => ownCovers(h, sk));
+const noSportsMessage = (ctx) => (isOwnPlatform(ctx.base) || ctx.hedges.every(isOwnPlatform)
+  ? "BET99 和 Caesars 只有 NBA / NHL / NFL 的赛前赔率，所选联赛没有可用赛事。" : "所选联赛当前没有活跃赛事。");
+/* Asks each source for its own books and joins the quotes. call(client, books) is one request. A failing own API
+ * only drops its books for this run, unless the base book is one of them. */
+async function fetchFromSources(client, ctx, sk, call) {
+  const ours = ctx.platforms.filter(isOwnPlatform).filter((n) => ownCovers(n, sk));
+  const theirs = uniq(ctx.platforms.filter((n) => !isOwnPlatform(n)).map((n) => apiBookmakerKey(n, sk)));
+  const own = async () => {
+    if (!ours.length) return [];
+    try { return await call(ownClient, ours.map((n) => apiBookmakerKey(n, sk))); }
     catch (e) {
-      if (!(e instanceof OddsAPIError) || isFatal(e) || e.status === 429 || !(e.status >= 400 && e.status < 500)) throw e;
-      const paid = ctx.platforms.filter(isPaidPlatform);
-      if (!paid.length) throw e;
-      if (paid.includes(ctx.base)) {
-        const err = new OddsAPIError(`主平台 ${platformTitle(ctx.base)} 无法获取赔率（${CONFIG.platforms[ctx.base]?.note || "可能需要付费套餐或不在该地区"}）。原始错误：${e.message}`, e.status);
+      if (e.status === 404) return [];   // a game the own API doesn't carry
+      if (ours.includes(ctx.base)) {
+        const err = new OddsAPIError(`主平台 ${platformTitle(ctx.base)} 无法获取赔率：${e.message}`, e.status);
         err.baseUnavailable = true; throw err;
       }
-      ctx.platforms = ctx.platforms.filter((n) => !paid.includes(n));
-      ctx.droppedBooks = uniq([...(ctx.droppedBooks || []), ...paid]);
-      log(`已移除不可用的平台 ${paid.join(", ")} 并重试（${e.status}）`);
-      if (!ctx.platforms.length) throw e;
+      const all = ctx.platforms.filter(isOwnPlatform);
+      ctx.platforms = ctx.platforms.filter((n) => !isOwnPlatform(n));
+      ctx.droppedBooks = uniq([...(ctx.droppedBooks || []), ...all]);
+      log(`已跳过 ${all.map(platformTitle).join("、")}：${e.message}`);
+      return [];
     }
-  }
+  };
+  const [a, b] = await Promise.all([theirs.length ? call(client, theirs) : [], own()]);
+  return [...a, ...b];
 }
 async function fetchCoreQuotes(client, ctx) {
   const all = [];
   for (const sk of await ensureSportKeys(client, ctx)) {
     const mk = coreMarketsFor(sk);
     if (!mk.length) continue;
-    try { all.push(...normalizeBookmakerQuotes(await withBookmakerFallback(ctx, sk, (books) => client.getOdds(sk, books, mk, ctx.from, ctx.to)))); }
+    try { all.push(...normalizeBookmakerQuotes(await fetchFromSources(client, ctx, sk, (c, books) => c.getOdds(sk, books, mk, ctx.from, ctx.to)))); }
     catch (e) { if (isFatal(e)) throw e; log(`跳过运动 ${sk}: ${e.message}`); }
   }
   return all;
@@ -1155,6 +1192,7 @@ function altPlan(ctx, eventSports) {
   const names = ctx.selectedMarkets;
   const plan = [];
   for (const [sk, id] of eventSports) {
+    if (!sportUsable(ctx, sk)) continue;
     const keys = uniq(names.filter((n) => altMarketAllowed(n, sk)).map((n) => CONFIG.full_game.optional_markets[n].market_key));
     if (keys.length) plan.push([sk, id, keys]);
   }
@@ -1168,7 +1206,7 @@ async function fetchEventMarketQuotes(client, ctx, plan, into, label) {
   for (const [sk, id, marketKeys] of plan) {
     n++; setStatus(`正在拉取${label}赔率（${n}/${plan.length}）…`, "", true);
     try {
-      const q = await withBookmakerFallback(ctx, sk, (books) => client.getEventOdds(sk, id, books, marketKeys));
+      const q = await fetchFromSources(client, ctx, sk, (c, books) => c.getEventOdds(sk, id, books, marketKeys));
       if (q.length) into.push(...normalizeBookmakerQuotes(q)); else skipped++;
     } catch (e) {
       if (isFatal(e)) throw e;
@@ -1196,7 +1234,7 @@ async function runAnalysis() {
   try {
     if (!$("fetchLatest").checked) {
       const cache = loadCache();
-      if (!cache?.quotes?.length) throw new Error("没有缓存的赔率，请先勾选「拉取最新 Odds API 数据」运行一次。");
+      if (!cache?.quotes?.length) throw new Error("没有缓存的赔率，请先勾选「拉取最新赔率」运行一次。");
       return finish(ctx, rankResults(ctx, cache.quotes), "缓存");
     }
     const client = getClient();
@@ -1207,7 +1245,7 @@ async function runAnalysis() {
     if (ctx.period === "full-game" && altKeys.length && !ctx.selectedEventIds.length) {
       setStatus("正在估算核心盘口的额度消耗…", "", true);
       const sk = await ensureSportKeys(client, ctx);
-      if (!sk.length) throw new Error("所选联赛当前没有活跃赛事。");
+      if (!sk.length) throw new Error(noSportsMessage(ctx));
       const core = coreCost(ctx, sk);
       if (core.cost > coreTh && !(await confirmDialog("确认核心盘口额度消耗", `核心盘口查询预计消耗约 ${core.cost} 个 API 额度。`, [core.line])))
         return setStatus("已取消，未消耗 API 额度。", "warn");
@@ -1240,7 +1278,7 @@ async function runAnalysis() {
     let plan = null;
     if (ctx.period === "full-game") {
       const sk = await ensureSportKeys(client, ctx);
-      if (!sk.length) throw new Error("所选联赛当前没有活跃赛事。");
+      if (!sk.length) throw new Error(noSportsMessage(ctx));
       const core = coreCost(ctx, sk);
       total += core.cost; lines.push(core.line);
       if (altKeys.length) {
@@ -1251,7 +1289,7 @@ async function runAnalysis() {
     } else {
       const periodKeys = periodMarketKeys(ctx.period, ctx.selectedMarkets);
       if (!ctx.selectedEventSports.length) throw new Error("赛段盘口需要选择具体赛事。");
-      plan = ctx.selectedEventSports.map(([sk, id]) => [sk, id, periodKeys]);
+      plan = ctx.selectedEventSports.filter(([sk]) => sportUsable(ctx, sk)).map(([sk, id]) => [sk, id, periodKeys]);
       const c = plan.length * periodKeys.length * ctx.regions;
       total += c; lines.push(`赛段盘口：${plan.length} 场赛事 × ${periodKeys.length} 个盘口 × ${ctx.regions} 个区域 = ${c}`);
     }
@@ -1341,7 +1379,7 @@ function coverageNote(ctx) {
   const missing = [ctx.base, ...ctx.hedges].filter((n) => !present.has(n));
   if (!missing.length) return { text: "", baseMissing: false };
   const desc = missing.map((n) => platformTitle(n) + (CONFIG.platforms[n]?.note ? `（${CONFIG.platforms[n].note}）` : "")).join("、");
-  const dropped = (ctx.droppedBooks || []).length ? " 部分平台被 API 拒绝，已自动跳过。" : "";
+  const dropped = (ctx.droppedBooks || []).length ? " 部分平台暂时不可用，已自动跳过。" : "";
   return { text: ` 注意：${desc} 没有返回任何赔率。${dropped}`, baseMissing: missing.includes(ctx.base) };
 }
 // Hedge platform plus any others tied on the same best odds
